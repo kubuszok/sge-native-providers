@@ -1,0 +1,20 @@
+# sbt
+target/
+project/target/
+project/project/
+.bsp/
+.metals/
+.bloop/
+.sbt/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Rust build output (compiled natively, not checked in)
+native-components/target/

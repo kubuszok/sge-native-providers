@@ -1,0 +1,86 @@
+#!/bin/bash
+# Cross-compile native-components for all 6 desktop targets + collect artifacts.
+# Must be run on macOS (native Apple targets, zig for Linux/Windows cross).
+#
+# Prerequisites: cargo, zig, cargo-zigbuild, cargo-xwin
+#   cargo install cargo-zigbuild cargo-xwin
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+NATIVE_DIR="$SCRIPT_DIR/../native-components"
+CROSS_DIR="$NATIVE_DIR/target/cross"
+
+DESKTOP_TARGETS=(
+  "x86_64-apple-darwin:macos-x86_64"
+  "aarch64-apple-darwin:macos-aarch64"
+  "x86_64-unknown-linux-gnu:linux-x86_64"
+  "aarch64-unknown-linux-gnu:linux-aarch64"
+  "x86_64-pc-windows-msvc:windows-x86_64"
+  "aarch64-pc-windows-msvc:windows-aarch64"
+)
+
+echo "=== Building all 6 desktop targets ==="
+
+for entry in "${DESKTOP_TARGETS[@]}"; do
+  IFS=: read -r rust_target classifier <<< "$entry"
+  echo ""
+  echo "--- $classifier ($rust_target) ---"
+
+  case "$rust_target" in
+    *-apple-darwin)
+      cargo build --release --target "$rust_target" --manifest-path "$NATIVE_DIR/Cargo.toml"
+      ;;
+    *-linux-gnu)
+      cargo zigbuild --release --target "$rust_target" --manifest-path "$NATIVE_DIR/Cargo.toml"
+      ;;
+    *-windows-msvc)
+      # cargo-xwin provides Windows SDK headers (zig doesn't have setjmp.h etc.)
+      cargo xwin build --release --target "$rust_target" --manifest-path "$NATIVE_DIR/Cargo.toml"
+      ;;
+  esac
+done
+
+echo ""
+echo "=== Collecting artifacts ==="
+
+# Clean and recreate cross dir
+rm -rf "$CROSS_DIR"
+
+for entry in "${DESKTOP_TARGETS[@]}"; do
+  IFS=: read -r rust_target classifier <<< "$entry"
+  src_dir="$NATIVE_DIR/target/$rust_target/release"
+  dest_dir="$CROSS_DIR/$classifier"
+  mkdir -p "$dest_dir"
+
+  # Static archives (.a)
+  for f in libsge_native_ops.a sge_native_ops.lib libsge_audio.a libglfw3.a; do
+    [ -f "$src_dir/$f" ] && cp "$src_dir/$f" "$dest_dir/"
+  done
+
+  # FreeType static archive — built by freetype-sys crate.
+  # On native macOS: uses system Homebrew freetype (copy from /opt/homebrew/opt/freetype/lib/).
+  # On cross-compiled targets: freetype-sys builds from vendored source, producing libfreetype2.a
+  # in target/<triple>/release/build/freetype-sys-<hash>/out/.
+  if [[ "$rust_target" == *"-apple-darwin" ]] && [ -f "/opt/homebrew/opt/freetype/lib/libfreetype.a" ]; then
+    cp "/opt/homebrew/opt/freetype/lib/libfreetype.a" "$dest_dir/libfreetype.a"
+  else
+    # Find libfreetype2.a in Cargo's build output (hash in path varies)
+    ft_archive=$(find "$NATIVE_DIR/target/$rust_target/release/build" -path "*/freetype-sys-*/out/libfreetype2.a" 2>/dev/null | head -1)
+    if [ -n "$ft_archive" ]; then
+      cp "$ft_archive" "$dest_dir/libfreetype.a"
+    fi
+  fi
+
+  # Shared libraries
+  for f in libsge_native_ops.dylib libsge_native_ops.so sge_native_ops.dll sge_native_ops.dll.lib \
+           libsge_audio.dylib libsge_audio.so sge_audio.dll \
+           libglfw.dylib libglfw.so glfw3.dll; do
+    [ -f "$src_dir/$f" ] && cp "$src_dir/$f" "$dest_dir/"
+  done
+
+  echo "  $classifier: $(ls "$dest_dir" | wc -l | tr -d ' ') files"
+done
+
+echo ""
+echo "=== Done: artifacts in $CROSS_DIR ==="

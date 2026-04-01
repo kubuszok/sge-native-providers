@@ -1,0 +1,193 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-package:
+    name: Build native components + package JARs
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: true
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: >-
+            x86_64-apple-darwin,
+            aarch64-apple-darwin,
+            x86_64-unknown-linux-gnu,
+            aarch64-unknown-linux-gnu,
+            x86_64-pc-windows-msvc,
+            aarch64-pc-windows-msvc,
+            aarch64-linux-android,
+            armv7-linux-androideabi,
+            x86_64-linux-android
+
+      - uses: mlugg/setup-zig@v2
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cargo/bin
+            ~/Library/Caches/cargo-xwin
+            ~/Library/Caches/cargo-zigbuild
+            native-components/target
+          key: rust-macos-all-${{ hashFiles('native-components/Cargo.lock') }}
+          restore-keys: rust-macos-all-
+
+      - name: Install cross-compilation tools
+        run: |
+          cargo install cargo-zigbuild || true
+          cargo install cargo-xwin || true
+
+      - name: Install LLVM and add to PATH
+        run: |
+          brew install llvm
+          echo "/opt/homebrew/opt/llvm/bin" >> $GITHUB_PATH
+
+      - name: Set up Android NDK
+        run: |
+          brew install --cask android-commandlinetools
+          export ANDROID_HOME="$HOME/Library/Android/sdk"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "ndk;27.2.12479018" || true
+
+      - name: Fetch X11 headers (for Linux GLFW cross-compilation)
+        run: |
+          chmod +x native-components/vendor/fetch-x11-headers.sh
+          native-components/vendor/fetch-x11-headers.sh
+
+      - name: Build all 6 desktop targets
+        run: |
+          chmod +x scripts/cross-all.sh
+          scripts/cross-all.sh
+
+      - name: Download ANGLE shared libraries
+        run: |
+          chmod +x scripts/download-angle.sh
+          scripts/download-angle.sh
+
+      - name: Build all 3 Android targets
+        run: |
+          chmod +x scripts/cross-android.sh
+          scripts/cross-android.sh
+        env:
+          ANDROID_NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/27.2.12479018
+
+      - name: Verify native artifacts
+        run: |
+          echo "=== Desktop ==="
+          MISSING=0
+          for plat in macos-aarch64 macos-x86_64 linux-x86_64 linux-aarch64 windows-x86_64 windows-aarch64; do
+            echo "--- $plat ---"
+            ls native-components/target/cross/$plat/ 2>/dev/null || echo "  MISSING!"
+            if [[ "$plat" != windows-* ]]; then
+              for lib in libsge_native_ops.a libsge_audio.a libglfw3.a; do
+                if [ ! -f "native-components/target/cross/$plat/$lib" ]; then
+                  echo "  MISSING: $lib"
+                  MISSING=1
+                fi
+              done
+            fi
+          done
+          echo "=== Android ==="
+          for classifier in android-aarch64 android-armv7 android-x86_64; do
+            echo "--- $classifier ---"
+            ls native-components/target/cross/$classifier/ 2>/dev/null || echo "  MISSING!"
+          done
+          if [ "$MISSING" -eq 1 ]; then
+            echo "::error::Critical native artifacts are missing!"
+            exit 1
+          fi
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: "zulu"
+          cache: sbt
+      - uses: sbt/setup-sbt@v1
+
+      - name: Package and verify JARs
+        run: |
+          sbt 'scala-native-sge-ops-provider/packageBin; panama-sge-ops-provider/packageBin; scala-native-angle-provider/packageBin; panama-angle-provider/packageBin; android-sge-ops-provider/packageBin'
+
+          FAIL=0
+          verify_jar() {
+            local jar="$1" ; shift
+            echo "=== Verifying $jar ==="
+            local contents
+            contents=$(jar tf "$jar")
+            for expected in "$@"; do
+              if echo "$contents" | grep -q "$expected"; then
+                echo "  OK: $expected"
+              else
+                echo "  MISSING: $expected"
+                FAIL=1
+              fi
+            done
+          }
+
+          # Scala Native SGE ops: must have .a for all non-Windows platforms
+          SN_OPS_JAR=$(ls providers/scala-native-sge-ops/target/*.jar)
+          for plat in linux-x86_64 linux-aarch64 macos-x86_64 macos-aarch64; do
+            verify_jar "$SN_OPS_JAR" \
+              "native/$plat/libsge_native_ops.a" \
+              "native/$plat/libsge_audio.a" \
+              "native/$plat/libglfw3.a" \
+              "native/$plat/libfreetype.a"
+          done
+          for plat in windows-x86_64 windows-aarch64; do
+            verify_jar "$SN_OPS_JAR" "native/$plat/sge_native_ops.lib"
+          done
+          verify_jar "$SN_OPS_JAR" "native-bundle.json"
+
+          # Panama SGE ops: must have shared libs for all platforms
+          PANAMA_OPS_JAR=$(ls providers/panama-sge-ops/target/*.jar)
+          for plat in linux-x86_64 linux-aarch64; do
+            verify_jar "$PANAMA_OPS_JAR" \
+              "native/$plat/libsge_native_ops.so" \
+              "native/$plat/libsge_audio.so" \
+              "native/$plat/libglfw.so"
+          done
+          for plat in macos-x86_64 macos-aarch64; do
+            verify_jar "$PANAMA_OPS_JAR" \
+              "native/$plat/libsge_native_ops.dylib" \
+              "native/$plat/libsge_audio.dylib" \
+              "native/$plat/libglfw.dylib"
+          done
+
+          # ANGLE: must have EGL + GLESv2 for all platforms
+          SN_ANGLE_JAR=$(ls providers/scala-native-angle/target/*.jar)
+          verify_jar "$SN_ANGLE_JAR" "native-bundle.json"
+          for plat in linux-x86_64 linux-aarch64; do
+            verify_jar "$SN_ANGLE_JAR" "native/$plat/libEGL.so" "native/$plat/libGLESv2.so"
+          done
+          for plat in macos-x86_64 macos-aarch64; do
+            verify_jar "$SN_ANGLE_JAR" "native/$plat/libEGL.dylib" "native/$plat/libGLESv2.dylib"
+          done
+
+          # Android: must have .so for all ABIs
+          ANDROID_JAR=$(ls providers/android-sge-ops/target/*.jar)
+          for abi in android-aarch64 android-armv7 android-x86_64; do
+            verify_jar "$ANDROID_JAR" "native/$abi/libsge_native_ops.so" "native/$abi/libsge_audio.so"
+          done
+
+          if [ "$FAIL" -eq 1 ]; then
+            echo "::error::JAR content validation failed — missing expected native files!"
+            exit 1
+          fi
+          echo "=== All JAR validations passed ==="
