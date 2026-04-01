@@ -1,0 +1,102 @@
+name: Sonatype Release
+
+on:
+  push:
+    branches: [master]
+    tags: ["*"]
+
+jobs:
+  build-and-publish:
+    runs-on: macos-latest
+
+    name: ${{ startsWith(github.ref, 'refs/tags/') && 'Publish Tag as Release' || 'Publish Snapshot' }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: true
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: >-
+            x86_64-apple-darwin,
+            aarch64-apple-darwin,
+            x86_64-unknown-linux-gnu,
+            aarch64-unknown-linux-gnu,
+            x86_64-pc-windows-msvc,
+            aarch64-pc-windows-msvc,
+            aarch64-linux-android,
+            armv7-linux-androideabi,
+            x86_64-linux-android
+
+      - uses: mlugg/setup-zig@v2
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cargo/bin
+            ~/Library/Caches/cargo-xwin
+            ~/Library/Caches/cargo-zigbuild
+            native-components/target
+          key: rust-macos-all-${{ hashFiles('native-components/Cargo.lock') }}
+          restore-keys: rust-macos-all-
+
+      - name: Install cross-compilation tools
+        run: |
+          cargo install cargo-zigbuild || true
+          cargo install cargo-xwin || true
+
+      - name: Install LLVM and add to PATH
+        run: |
+          brew install llvm
+          echo "/opt/homebrew/opt/llvm/bin" >> $GITHUB_PATH
+
+      - name: Set up Android NDK
+        run: |
+          brew install --cask android-commandlinetools
+          export ANDROID_HOME="$HOME/Library/Android/sdk"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "ndk;27.2.12479018" || true
+
+      - name: Fetch X11 headers (for Linux GLFW cross-compilation)
+        run: |
+          chmod +x native-components/vendor/fetch-x11-headers.sh
+          native-components/vendor/fetch-x11-headers.sh
+
+      - name: Build all 6 desktop targets
+        run: |
+          chmod +x scripts/cross-all.sh
+          scripts/cross-all.sh
+
+      - name: Download ANGLE shared libraries
+        run: |
+          chmod +x scripts/download-angle.sh
+          scripts/download-angle.sh
+
+      - name: Build all 3 Android targets
+        run: |
+          chmod +x scripts/cross-android.sh
+          scripts/cross-android.sh
+        env:
+          ANDROID_NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/27.2.12479018
+
+      - uses: coursier/cache-action@v8
+      - name: Import GPG key for signing the release
+        uses: crazy-max/ghaction-import-gpg@v7
+        with:
+          gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
+          passphrase: ${{ secrets.GPG_PASSPHRASE }}
+      - uses: coursier/setup-action@v3.0.0
+        with:
+          jvm: "temurin:1.17.0.15"
+          apps: sbt
+
+      - name: Publish all projects
+        run: sbt ci-release
+        env:
+          SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
+          SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}

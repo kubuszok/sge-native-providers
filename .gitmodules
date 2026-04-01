@@ -1,0 +1,6 @@
+[submodule "native-components/vendor/glfw"]
+	path = native-components/vendor/glfw
+	url = https://github.com/glfw/glfw.git
+[submodule "native-components/vendor/miniaudio"]
+	path = native-components/vendor/miniaudio
+	url = https://github.com/mackron/miniaudio.git
