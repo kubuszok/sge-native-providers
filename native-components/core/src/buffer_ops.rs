@@ -2,7 +2,7 @@
 //
 // Port of the C/C++ inline code from LibGDX BufferUtils.java (lines 612-708).
 //
-// Public safe Rust API (for JNI bridge and Scala.js reference):
+// Public safe Rust API (for testing and Scala.js reference):
 //   copy_bytes,
 //   transform_v4m4, transform_v3m4, transform_v2m4, transform_v3m3, transform_v2m3,
 //   find_vertex, find_vertex_epsilon
@@ -858,5 +858,126 @@ mod tests {
         let mut dst = vec![0u8; 3];
         copy_bytes(&src, 1, &mut dst, 1, 0);
         assert_eq!(dst, vec![0, 0, 0]);
+    }
+
+    // -- Additional copy_bytes tests ----------------------------------------
+
+    #[test]
+    fn copy_bytes_basic_no_offset() {
+        let src = vec![10u8, 20, 30, 40, 50];
+        let mut dst = vec![0u8; 5];
+        copy_bytes(&src, 0, &mut dst, 0, 3);
+        assert_eq!(&dst[..3], &[10, 20, 30]);
+        assert_eq!(&dst[3..], &[0, 0]); // untouched
+    }
+
+    #[test]
+    fn copy_bytes_with_both_offsets() {
+        let src = vec![0u8, 0, 100, 101, 102, 0];
+        let mut dst = vec![0u8; 6];
+        copy_bytes(&src, 2, &mut dst, 3, 3);
+        assert_eq!(dst, vec![0, 0, 0, 100, 101, 102]);
+    }
+
+    // -- Additional transform_v4m4 tests ------------------------------------
+
+    #[test]
+    fn transform_v4m4_translation_matrix() {
+        // Column-major 4x4 translation: tx=5, ty=10, tz=15
+        let matrix: [f32; 16] = [
+            1.0, 0.0, 0.0, 0.0,   // col 0
+            0.0, 1.0, 0.0, 0.0,   // col 1
+            0.0, 0.0, 1.0, 0.0,   // col 2
+            5.0, 10.0, 15.0, 1.0,  // col 3
+        ];
+        let mut data = vec![1.0, 2.0, 3.0, 1.0]; // w=1 for translation to apply
+        transform_v4m4(&mut data, 4, 1, &matrix, 0);
+        // x' = 1*1 + 2*0 + 3*0 + 1*5 = 6
+        // y' = 1*0 + 2*1 + 3*0 + 1*10 = 12
+        // z' = 1*0 + 2*0 + 3*1 + 1*15 = 18
+        // w' = 1*0 + 2*0 + 3*0 + 1*1 = 1
+        assert_eq!(data, vec![6.0, 12.0, 18.0, 1.0]);
+    }
+
+    // -- Additional transform_v2m3 tests ------------------------------------
+
+    #[test]
+    fn transform_v2m3_translation_10_20() {
+        // Column-major 3x3 with translation (10, 20):
+        // [1 0 10]
+        // [0 1 20]
+        // [0 0  1]
+        // col0=[1,0,0], col1=[0,1,0], col2=[10,20,1]
+        let matrix: [f32; 9] = [
+            1.0, 0.0, 0.0,  // col 0
+            0.0, 1.0, 0.0,  // col 1
+            10.0, 20.0, 1.0, // col 2
+        ];
+        let mut data = vec![3.0, 7.0];
+        transform_v2m3(&mut data, 2, 1, &matrix, 0);
+        // x' = 3*1 + 7*0 + 10 = 13
+        // y' = 3*0 + 7*1 + 20 = 27
+        assert_eq!(data, vec![13.0, 27.0]);
+    }
+
+    // -- Additional find_vertex tests ---------------------------------------
+
+    #[test]
+    fn find_vertex_first_position() {
+        let vertices: Vec<f32> = vec![
+            10.0, 20.0, 30.0, // vertex 0
+            40.0, 50.0, 60.0, // vertex 1
+            70.0, 80.0, 90.0, // vertex 2
+        ];
+        let needle = vec![10.0, 20.0, 30.0];
+        assert_eq!(find_vertex(&needle, 3, &vertices, 3), 0);
+    }
+
+    #[test]
+    fn find_vertex_middle_position() {
+        let vertices: Vec<f32> = vec![
+            1.0, 2.0, // vertex 0
+            3.0, 4.0, // vertex 1
+            5.0, 6.0, // vertex 2
+            7.0, 8.0, // vertex 3
+            9.0, 10.0, // vertex 4
+        ];
+        let needle = vec![5.0, 6.0];
+        assert_eq!(find_vertex(&needle, 2, &vertices, 5), 2);
+    }
+
+    #[test]
+    fn find_vertex_no_match_returns_minus_one() {
+        let vertices: Vec<f32> = vec![
+            1.0, 1.0,
+            2.0, 2.0,
+            3.0, 3.0,
+        ];
+        let needle = vec![4.0, 4.0];
+        assert_eq!(find_vertex(&needle, 2, &vertices, 3), -1);
+    }
+
+    // -- Additional find_vertex_epsilon tests -------------------------------
+
+    #[test]
+    fn find_vertex_epsilon_within_tolerance_found() {
+        let vertices: Vec<f32> = vec![
+            1.0, 2.0, 3.0,
+            10.0, 20.0, 30.0,
+        ];
+        // Slightly off from vertex 1
+        let needle = vec![10.05, 19.95, 30.01];
+        assert_eq!(find_vertex_epsilon(&needle, 3, &vertices, 2, 0.1), 1);
+    }
+
+    #[test]
+    fn find_vertex_epsilon_outside_tolerance_not_found() {
+        let vertices: Vec<f32> = vec![
+            1.0, 2.0, 3.0,
+            10.0, 20.0, 30.0,
+        ];
+        // One component is too far off
+        let needle = vec![10.0, 20.5, 30.0];
+        assert_eq!(find_vertex_epsilon(&needle, 3, &vertices, 2, 0.1), -1);
     }
 }

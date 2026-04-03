@@ -91,9 +91,15 @@ lazy val root = project
   .settings(publishSettings *)
   .settings(noPublishSettings *)
   .aggregate(
-    `scala-native-sge-ops-provider`,
-    `panama-sge-ops-provider`,
-    `android-sge-ops-provider`,
+    `scala-native-sge-core-provider`,
+    `panama-sge-core-provider`,
+    `android-sge-core-provider`,
+    `scala-native-sge-freetype-provider`,
+    `panama-sge-freetype-provider`,
+    `android-sge-freetype-provider`,
+    `scala-native-sge-physics-provider`,
+    `panama-sge-physics-provider`,
+    `android-sge-physics-provider`,
     `scala-native-angle-provider`,
     `panama-angle-provider`
   )
@@ -110,11 +116,11 @@ lazy val root = project
 // ── SGE core native ops (sge_native_ops + sge_audio + glfw3) ─────────
 
 // Scala Native: static archives (.a) for linking
-lazy val `scala-native-sge-ops-provider` = project
+lazy val `scala-native-sge-core-provider` = project
   .in(file("providers/scala-native-sge-ops"))
   .settings(publishSettings *)
   .settings(
-    name             := "scala-native-sge-ops-provider",
+    name             := "scala-native-sge-core-provider",
     autoScalaLibrary := false,
     crossPaths       := false,
     Compile / packageDoc / publishArtifact := false,
@@ -126,18 +132,21 @@ lazy val `scala-native-sge-ops-provider` = project
         "libsge_native_ops.a", "sge_native_ops.lib",
         "libsge_audio.a",
         "libglfw3.a",
-        "libfreetype.a"  // built by freetype-sys: system lib on macOS, vendored on cross-compiled targets
+        // Windows companion .lib stubs (merged into sge_native_ops.dll)
+        "sge_audio.lib", "glfw3.lib", "glfw.lib", "EGL.lib", "GLESv2.lib",
+        // Linux libobjc stub (for @link("objc") in Scala Native)
+        "libobjc.a"
       )
       fatJarMappings(cross, desktopPlatforms, sgeOpsLibs.contains)
     }
   )
 
 // JVM (Panama): shared libraries (.dylib/.so/.dll) for runtime loading
-lazy val `panama-sge-ops-provider` = project
+lazy val `panama-sge-core-provider` = project
   .in(file("providers/panama-sge-ops"))
   .settings(publishSettings *)
   .settings(
-    name             := "panama-sge-ops-provider",
+    name             := "panama-sge-core-provider",
     autoScalaLibrary := false,
     crossPaths       := false,
     Compile / packageDoc / publishArtifact := false,
@@ -155,12 +164,12 @@ lazy val `panama-sge-ops-provider` = project
     }
   )
 
-// Android: JNI shared libraries (.so) for 3 ABIs
-lazy val `android-sge-ops-provider` = project
+// Android: shared libraries (.so) for 3 ABIs
+lazy val `android-sge-core-provider` = project
   .in(file("providers/android-sge-ops"))
   .settings(publishSettings *)
   .settings(
-    name             := "android-sge-ops-provider",
+    name             := "android-sge-core-provider",
     autoScalaLibrary := false,
     crossPaths       := false,
     Compile / packageDoc / publishArtifact := false,
@@ -173,6 +182,124 @@ lazy val `android-sge-ops-provider` = project
         if (dir.exists()) {
           val sgeOpsLibs = Set("libsge_native_ops.so", "libsge_audio.so")
           sbt.IO.listFiles(dir).filter(f => f.isFile && sgeOpsLibs.contains(f.getName))
+            .map(f => f -> s"native/$classifier/${f.getName}").toSeq
+        } else Seq.empty
+      }
+    }
+  )
+
+// ── FreeType (sge_freetype + libfreetype) ─────────────────────────────
+
+// Scala Native: static archives for linking
+lazy val `scala-native-sge-freetype-provider` = project
+  .in(file("providers/scala-native-sge-freetype"))
+  .settings(publishSettings *)
+  .settings(
+    name             := "scala-native-sge-freetype-provider",
+    autoScalaLibrary := false,
+    crossPaths       := false,
+    Compile / packageDoc / publishArtifact := false,
+    Compile / packageSrc / publishArtifact := false,
+    Compile / packageBin / mappings ++= {
+      val cross = crossDir.value
+      val libs = Set("libsge_freetype.a", "sge_freetype.lib", "libfreetype.a")
+      fatJarMappings(cross, desktopPlatforms, libs.contains)
+    }
+  )
+
+// JVM (Panama): shared libraries for runtime loading
+lazy val `panama-sge-freetype-provider` = project
+  .in(file("providers/panama-sge-freetype"))
+  .settings(publishSettings *)
+  .settings(
+    name             := "panama-sge-freetype-provider",
+    autoScalaLibrary := false,
+    crossPaths       := false,
+    Compile / packageDoc / publishArtifact := false,
+    Compile / packageSrc / publishArtifact := false,
+    Compile / packageBin / mappings ++= {
+      val cross = crossDir.value
+      val libs = Set("libsge_freetype.dylib", "libsge_freetype.so", "sge_freetype.dll")
+      fatJarMappings(cross, desktopPlatforms, libs.contains)
+    }
+  )
+
+// Android: shared libraries for 3 ABIs
+lazy val `android-sge-freetype-provider` = project
+  .in(file("providers/android-sge-freetype"))
+  .settings(publishSettings *)
+  .settings(
+    name             := "android-sge-freetype-provider",
+    autoScalaLibrary := false,
+    crossPaths       := false,
+    Compile / packageDoc / publishArtifact := false,
+    Compile / packageSrc / publishArtifact := false,
+    Compile / packageBin / mappings ++= {
+      val base = (ThisBuild / baseDirectory).value / "native-components" / "target"
+      androidAbis.flatMap { case (rustTarget, classifier) =>
+        val dir = base / rustTarget / "release"
+        if (dir.exists()) {
+          val libs = Set("libsge_freetype.so")
+          sbt.IO.listFiles(dir).filter(f => f.isFile && libs.contains(f.getName))
+            .map(f => f -> s"native/$classifier/${f.getName}").toSeq
+        } else Seq.empty
+      }
+    }
+  )
+
+// ── Physics (sge_physics via Rapier2D) ────────────────────────────────
+
+// Scala Native: static archives for linking
+lazy val `scala-native-sge-physics-provider` = project
+  .in(file("providers/scala-native-sge-physics"))
+  .settings(publishSettings *)
+  .settings(
+    name             := "scala-native-sge-physics-provider",
+    autoScalaLibrary := false,
+    crossPaths       := false,
+    Compile / packageDoc / publishArtifact := false,
+    Compile / packageSrc / publishArtifact := false,
+    Compile / packageBin / mappings ++= {
+      val cross = crossDir.value
+      val libs = Set("libsge_physics.a", "sge_physics.lib")
+      fatJarMappings(cross, desktopPlatforms, libs.contains)
+    }
+  )
+
+// JVM (Panama): shared libraries for runtime loading
+lazy val `panama-sge-physics-provider` = project
+  .in(file("providers/panama-sge-physics"))
+  .settings(publishSettings *)
+  .settings(
+    name             := "panama-sge-physics-provider",
+    autoScalaLibrary := false,
+    crossPaths       := false,
+    Compile / packageDoc / publishArtifact := false,
+    Compile / packageSrc / publishArtifact := false,
+    Compile / packageBin / mappings ++= {
+      val cross = crossDir.value
+      val libs = Set("libsge_physics.dylib", "libsge_physics.so", "sge_physics.dll")
+      fatJarMappings(cross, desktopPlatforms, libs.contains)
+    }
+  )
+
+// Android: shared libraries for 3 ABIs
+lazy val `android-sge-physics-provider` = project
+  .in(file("providers/android-sge-physics"))
+  .settings(publishSettings *)
+  .settings(
+    name             := "android-sge-physics-provider",
+    autoScalaLibrary := false,
+    crossPaths       := false,
+    Compile / packageDoc / publishArtifact := false,
+    Compile / packageSrc / publishArtifact := false,
+    Compile / packageBin / mappings ++= {
+      val base = (ThisBuild / baseDirectory).value / "native-components" / "target"
+      androidAbis.flatMap { case (rustTarget, classifier) =>
+        val dir = base / rustTarget / "release"
+        if (dir.exists()) {
+          val libs = Set("libsge_physics.so")
+          sbt.IO.listFiles(dir).filter(f => f.isFile && libs.contains(f.getName))
             .map(f => f -> s"native/$classifier/${f.getName}").toSeq
         } else Seq.empty
       }

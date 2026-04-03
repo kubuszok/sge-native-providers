@@ -1,0 +1,14 @@
+[package]
+name = "sge-native-physics"
+version.workspace = true
+edition.workspace = true
+description = "2D physics via Rapier2D for SGE (C ABI)"
+
+[lib]
+name = "sge_physics"
+crate-type = ["cdylib", "staticlib"]
+
+[dependencies]
+# 2D physics engine (pure Rust — cross-compiles to all targets)
+rapier2d = "0.22"
+crossbeam = "0.8"

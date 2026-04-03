@@ -698,3 +698,248 @@ pub unsafe extern "C" fn sge_phys_poll_contact_stop_events(
     }
     count as i32
 }
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // -- World lifecycle ----------------------------------------------------
+
+    #[test]
+    fn world_create_get_gravity_destroy() {
+        unsafe {
+            let world = sge_phys_create_world(0.0, -9.81);
+            assert!(!world.is_null());
+
+            let mut gravity = [0.0f32; 2];
+            sge_phys_world_get_gravity(world, gravity.as_mut_ptr());
+            assert_eq!(gravity[0], 0.0);
+            assert!((gravity[1] - (-9.81)).abs() < 1e-5);
+
+            sge_phys_destroy_world(world);
+        }
+    }
+
+    #[test]
+    fn world_set_gravity() {
+        unsafe {
+            let world = sge_phys_create_world(0.0, 0.0);
+
+            sge_phys_world_set_gravity(world, 1.0, -20.0);
+
+            let mut gravity = [0.0f32; 2];
+            sge_phys_world_get_gravity(world, gravity.as_mut_ptr());
+            assert_eq!(gravity[0], 1.0);
+            assert_eq!(gravity[1], -20.0);
+
+            sge_phys_destroy_world(world);
+        }
+    }
+
+    #[test]
+    fn world_step_no_crash() {
+        unsafe {
+            let world = sge_phys_create_world(0.0, -9.81);
+            // Step several times without any bodies — should not crash
+            for _ in 0..10 {
+                sge_phys_world_step(world, 1.0 / 60.0);
+            }
+            sge_phys_destroy_world(world);
+        }
+    }
+
+    // -- Gravity simulation ------------------------------------------------
+
+    #[test]
+    fn dynamic_body_falls_under_gravity() {
+        unsafe {
+            let world = sge_phys_create_world(0.0, -9.81);
+
+            // Create a dynamic body at (0, 10)
+            let body = sge_phys_create_dynamic_body(world, 0.0, 10.0, 0.0);
+
+            // Add a box collider (required for mass)
+            let _collider = sge_phys_create_box_collider(world, body, 0.5, 0.5);
+
+            // Record initial position
+            let mut pos = [0.0f32; 2];
+            sge_phys_body_get_position(world, body, pos.as_mut_ptr());
+            let initial_y = pos[1];
+            assert!((initial_y - 10.0).abs() < 1e-5);
+
+            // Step 60 times at dt=1/60
+            for _ in 0..60 {
+                sge_phys_world_step(world, 1.0 / 60.0);
+            }
+
+            // Check position: Y should have decreased due to gravity
+            sge_phys_body_get_position(world, body, pos.as_mut_ptr());
+            assert!(
+                pos[1] < initial_y,
+                "body should have fallen: initial_y={}, final_y={}",
+                initial_y, pos[1]
+            );
+            // X should remain ~0
+            assert!(
+                pos[0].abs() < 1e-3,
+                "X should be near 0, got {}",
+                pos[0]
+            );
+
+            sge_phys_destroy_world(world);
+        }
+    }
+
+    #[test]
+    fn static_body_does_not_move() {
+        unsafe {
+            let world = sge_phys_create_world(0.0, -9.81);
+
+            let body = sge_phys_create_static_body(world, 5.0, 5.0, 0.0);
+            let _collider = sge_phys_create_box_collider(world, body, 1.0, 1.0);
+
+            for _ in 0..60 {
+                sge_phys_world_step(world, 1.0 / 60.0);
+            }
+
+            let mut pos = [0.0f32; 2];
+            sge_phys_body_get_position(world, body, pos.as_mut_ptr());
+            assert!((pos[0] - 5.0).abs() < 1e-5);
+            assert!((pos[1] - 5.0).abs() < 1e-5);
+
+            sge_phys_destroy_world(world);
+        }
+    }
+
+    // -- Raycast -----------------------------------------------------------
+
+    #[test]
+    fn raycast_hits_static_box() {
+        unsafe {
+            let world = sge_phys_create_world(0.0, 0.0); // no gravity
+
+            // Create a static body with a box at origin
+            let body = sge_phys_create_static_body(world, 0.0, 0.0, 0.0);
+            let _collider = sge_phys_create_box_collider(world, body, 1.0, 1.0);
+
+            // Update the query pipeline by stepping once
+            sge_phys_world_step(world, 1.0 / 60.0);
+
+            // Cast ray from (0, 10) downward (direction 0, -1)
+            let mut out = [0.0f32; 9];
+            let hit = sge_phys_ray_cast(
+                world,
+                0.0, 10.0,  // origin
+                0.0, -1.0,  // direction (down)
+                100.0,       // max distance
+                out.as_mut_ptr(),
+            );
+
+            assert_eq!(hit, 1, "raycast should hit the box");
+
+            // Hit point should be near (0, 1) — top of the box
+            let hit_x = out[0];
+            let hit_y = out[1];
+            assert!(hit_x.abs() < 0.1, "hit X should be near 0, got {}", hit_x);
+            assert!(
+                (hit_y - 1.0).abs() < 0.1,
+                "hit Y should be near 1.0, got {}",
+                hit_y
+            );
+
+            // TOI should be ~9.0 (distance from origin (0,10) to (0,1))
+            let toi = out[4];
+            assert!(
+                (toi - 9.0).abs() < 0.1,
+                "TOI should be near 9.0, got {}",
+                toi
+            );
+
+            sge_phys_destroy_world(world);
+        }
+    }
+
+    #[test]
+    fn raycast_misses() {
+        unsafe {
+            let world = sge_phys_create_world(0.0, 0.0);
+
+            // Create a static body at (100, 100) — far away from ray
+            let body = sge_phys_create_static_body(world, 100.0, 100.0, 0.0);
+            let _collider = sge_phys_create_box_collider(world, body, 0.5, 0.5);
+
+            sge_phys_world_step(world, 1.0 / 60.0);
+
+            // Cast ray from origin going right — should miss the box at (100,100)
+            let mut out = [0.0f32; 9];
+            let hit = sge_phys_ray_cast(
+                world,
+                0.0, 0.0,  // origin
+                1.0, 0.0,  // direction (right)
+                10.0,       // max distance (only 10 units)
+                out.as_mut_ptr(),
+            );
+
+            assert_eq!(hit, 0, "raycast should miss");
+
+            sge_phys_destroy_world(world);
+        }
+    }
+
+    // -- Body properties ---------------------------------------------------
+
+    #[test]
+    fn body_get_set_angle() {
+        unsafe {
+            let world = sge_phys_create_world(0.0, 0.0);
+
+            let body = sge_phys_create_dynamic_body(world, 0.0, 0.0, 1.5);
+            let angle = sge_phys_body_get_angle(world, body);
+            assert!((angle - 1.5).abs() < 1e-5);
+
+            sge_phys_body_set_angle(world, body, 3.0);
+            let angle = sge_phys_body_get_angle(world, body);
+            assert!((angle - 3.0).abs() < 1e-5);
+
+            sge_phys_destroy_world(world);
+        }
+    }
+
+    #[test]
+    fn body_linear_velocity() {
+        unsafe {
+            let world = sge_phys_create_world(0.0, 0.0);
+            let body = sge_phys_create_dynamic_body(world, 0.0, 0.0, 0.0);
+            let _collider = sge_phys_create_box_collider(world, body, 0.5, 0.5);
+
+            sge_phys_body_set_linear_velocity(world, body, 5.0, -3.0);
+
+            let mut vel = [0.0f32; 2];
+            sge_phys_body_get_linear_velocity(world, body, vel.as_mut_ptr());
+            assert!((vel[0] - 5.0).abs() < 1e-5);
+            assert!((vel[1] - (-3.0)).abs() < 1e-5);
+
+            sge_phys_destroy_world(world);
+        }
+    }
+
+    #[test]
+    fn body_destroy_no_crash() {
+        unsafe {
+            let world = sge_phys_create_world(0.0, -9.81);
+            let body = sge_phys_create_dynamic_body(world, 0.0, 0.0, 0.0);
+            let _collider = sge_phys_create_box_collider(world, body, 0.5, 0.5);
+
+            sge_phys_destroy_body(world, body);
+
+            // Stepping after body destruction should not crash
+            sge_phys_world_step(world, 1.0 / 60.0);
+
+            sge_phys_destroy_world(world);
+        }
+    }
+}

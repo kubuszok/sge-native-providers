@@ -58,7 +58,20 @@ for entry in "${DESKTOP_TARGETS[@]}"; do
     [ -f "$src_dir/$f" ] && cp "$src_dir/$f" "$dest_dir/"
   done
 
-  # FreeType static archive — built by freetype-sys crate.
+  # Shared libraries
+  for f in libsge_native_ops.dylib libsge_native_ops.so sge_native_ops.dll sge_native_ops.dll.lib \
+           libsge_audio.dylib libsge_audio.so sge_audio.dll \
+           libglfw.dylib libglfw.so glfw3.dll; do
+    [ -f "$src_dir/$f" ] && cp "$src_dir/$f" "$dest_dir/"
+  done
+
+  # FreeType and physics libraries (from workspace member crates)
+  for f in libsge_freetype.a libsge_freetype.dylib libsge_freetype.so sge_freetype.dll sge_freetype.dll.lib \
+           libsge_physics.a libsge_physics.dylib libsge_physics.so sge_physics.dll sge_physics.dll.lib; do
+    [ -f "$src_dir/$f" ] && cp "$src_dir/$f" "$dest_dir/"
+  done
+
+  # FreeType static archive — built by freetype-sys crate (dependency of sge-native-freetype).
   # On native macOS: uses system Homebrew freetype (copy from /opt/homebrew/opt/freetype/lib/).
   # On cross-compiled targets: freetype-sys builds from vendored source, producing libfreetype2.a
   # in target/<triple>/release/build/freetype-sys-<hash>/out/.
@@ -72,14 +85,37 @@ for entry in "${DESKTOP_TARGETS[@]}"; do
     fi
   fi
 
-  # Shared libraries
-  for f in libsge_native_ops.dylib libsge_native_ops.so sge_native_ops.dll sge_native_ops.dll.lib \
-           libsge_audio.dylib libsge_audio.so sge_audio.dll \
-           libglfw.dylib libglfw.so glfw3.dll; do
-    [ -f "$src_dir/$f" ] && cp "$src_dir/$f" "$dest_dir/"
-  done
-
   echo "  $classifier: $(ls "$dest_dir" | wc -l | tr -d ' ') files"
+done
+
+# Generate Windows companion .lib stubs
+for classifier in windows-x86_64 windows-aarch64; do
+  dest_dir="$CROSS_DIR/$classifier"
+  SRC="$dest_dir/sge_native_ops.lib"
+  if [ -f "$SRC" ]; then
+    for lib in sge_audio glfw3 glfw EGL GLESv2; do
+      [ ! -f "$dest_dir/${lib}.lib" ] && cp "$SRC" "$dest_dir/${lib}.lib"
+    done
+  fi
+done
+
+# Generate libobjc stub for Linux (needed for @link("objc") in Scala Native)
+for classifier in linux-x86_64 linux-aarch64; do
+  dest_dir="$CROSS_DIR/$classifier"
+  if [ ! -f "$dest_dir/libobjc.a" ]; then
+    STUB_C=$(mktemp /tmp/objc_stub.XXXXXX.c)
+    printf 'void *sel_registerName(const char *s) { return (void*)0; }\nvoid *objc_msgSend(void *self, void *sel, ...) { return (void*)0; }\nvoid *objc_getClass(const char *name) { return (void*)0; }\n' > "$STUB_C"
+    # Determine cross-compiler for this target
+    case "$classifier" in
+      linux-x86_64)  ZIG_TARGET="x86_64-linux-gnu" ;;
+      linux-aarch64) ZIG_TARGET="aarch64-linux-gnu" ;;
+    esac
+    STUB_O="${STUB_C%.c}.o"
+    zig cc -target "$ZIG_TARGET" -c "$STUB_C" -o "$STUB_O"
+    zig ar rcs "$dest_dir/libobjc.a" "$STUB_O"
+    rm -f "$STUB_C" "$STUB_O"
+    echo "  Generated libobjc.a stub for $classifier"
+  fi
 done
 
 echo ""
