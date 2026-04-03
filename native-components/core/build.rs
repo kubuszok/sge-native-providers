@@ -8,7 +8,7 @@
 // libraries that need their own exported symbols are built as SEPARATE shared
 // libraries placed alongside libsge_native_ops in the output directory.
 //
-// Output (all in native-components/target/release/):
+// Output (all in target/release/):
 //   - libsge_native_ops.{dylib,so,dll}  — Rust code (buffer ops, ETC1, transforms)
 //   - libsge_audio.{dylib,so,dll}       — miniaudio + audio bridge (37 sge_audio_* functions)
 //   - libglfw.{dylib,so,dll}            — GLFW windowing library (built from source)
@@ -20,6 +20,11 @@ fn main() {
     let out_dir = std::env::var("OUT_DIR").unwrap();
     let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
     let target_env = std::env::var("CARGO_CFG_TARGET_ENV").unwrap_or_default();
+
+    // Vendor directory is at the workspace root level (sibling to this crate's dir)
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+    let vendor_dir = std::path::Path::new(&manifest_dir).parent().unwrap().join("vendor");
+    let vendor = vendor_dir.to_str().unwrap().to_string();
 
     // Determine the final output directory (where libsge_native_ops will be placed).
     // Derive from OUT_DIR to handle both `cargo build` and `cargo build --target <triple>`
@@ -51,16 +56,16 @@ fn main() {
         if merge_into_cdylib {
             // Compile C code and let cargo link it into sge_native_ops.dll.
             // cargo_metadata(true) = default, tells cargo to link this archive.
-            build_audio_bridge_merged(&target_os);
-            build_glfw_merged(&target_os, &target_env);
+            build_audio_bridge_merged(&vendor, &target_os);
+            build_glfw_merged(&vendor, &target_os, &target_env);
         } else {
             // Create separate shared libraries (macOS, Linux, native Windows builds)
-            build_audio_bridge_shared(&out_dir, &release_dir, &target_os);
-            build_glfw_shared(&out_dir, &release_dir, &target_os, &target_env);
+            build_audio_bridge_shared(&vendor, &out_dir, &release_dir, &target_os);
+            build_glfw_shared(&vendor, &out_dir, &release_dir, &target_os, &target_env);
         }
     } else if !skip_c_libs && is_android {
         // Android only needs audio bridge (no GLFW)
-        build_audio_bridge_shared(&out_dir, &release_dir, &target_os);
+        build_audio_bridge_shared(&vendor, &out_dir, &release_dir, &target_os);
     }
     link_system_libs(&target_os);
 
@@ -73,22 +78,22 @@ fn main() {
     }
 
     // Audio bridge is loaded separately now — no need to link into libsge_native_ops
-    println!("cargo:rerun-if-changed=vendor/sge_audio_bridge.c");
-    println!("cargo:rerun-if-changed=vendor/miniaudio/miniaudio.c");
-    println!("cargo:rerun-if-changed=vendor/miniaudio/miniaudio.h");
-    println!("cargo:rerun-if-changed=vendor/glfw/src");
-    println!("cargo:rerun-if-changed=vendor/glfw/include");
-    println!("cargo:rerun-if-changed=vendor/glfw_platform_stubs.c");
+    println!("cargo:rerun-if-changed={}/sge_audio_bridge.c", vendor);
+    println!("cargo:rerun-if-changed={}/miniaudio/miniaudio.c", vendor);
+    println!("cargo:rerun-if-changed={}/miniaudio/miniaudio.h", vendor);
+    println!("cargo:rerun-if-changed={}/glfw/src", vendor);
+    println!("cargo:rerun-if-changed={}/glfw/include", vendor);
+    println!("cargo:rerun-if-changed={}/glfw_platform_stubs.c", vendor);
 }
 
 /// Compile audio bridge and link it into the main sge_native_ops cdylib (Windows cross-compilation).
 /// Uses cargo_metadata(true) so cargo links the C archive into the Rust cdylib.
-fn build_audio_bridge_merged(target_os: &str) {
+fn build_audio_bridge_merged(vendor: &str, target_os: &str) {
     let mut build = cc::Build::new();
     build
-        .file("vendor/sge_audio_bridge.c")
-        .include("vendor/miniaudio")
-        .include("vendor")
+        .file(format!("{}/sge_audio_bridge.c", vendor))
+        .include(format!("{}/miniaudio", vendor))
+        .include(vendor)
         .define("MA_NO_GENERATION", None)
         .warnings(false)
         .pic(true);
@@ -103,13 +108,13 @@ fn build_audio_bridge_merged(target_os: &str) {
 }
 
 /// Compile GLFW and link it into the main sge_native_ops cdylib (Windows cross-compilation).
-fn build_glfw_merged(target_os: &str, target_env: &str) {
-    let glfw_src = "vendor/glfw/src";
-    let glfw_include = "vendor/glfw/include";
+fn build_glfw_merged(vendor: &str, target_os: &str, target_env: &str) {
+    let glfw_src = format!("{}/glfw/src", vendor);
+    let glfw_include = format!("{}/glfw/include", vendor);
     let mut build = cc::Build::new();
     build
-        .include(glfw_include)
-        .include(glfw_src)
+        .include(&glfw_include)
+        .include(&glfw_src)
         .warnings(false)
         .pic(true);
 
@@ -138,7 +143,7 @@ fn build_glfw_merged(target_os: &str, target_env: &str) {
         }
     }
 
-    build.file("vendor/glfw_platform_stubs.c");
+    build.file(format!("{}/glfw_platform_stubs.c", vendor));
     build.compile("glfw3");
 
     // Link Windows system libraries
@@ -151,11 +156,11 @@ fn build_glfw_merged(target_os: &str, target_env: &str) {
 
 /// Compile miniaudio + audio bridge as a static archive, then link it into a
 /// separate shared library (libsge_audio) placed in the release directory.
-fn build_audio_bridge_shared(out_dir: &str, release_dir: &str, target_os: &str) {
+fn build_audio_bridge_shared(vendor: &str, out_dir: &str, release_dir: &str, target_os: &str) {
     cc::Build::new()
-        .file("vendor/sge_audio_bridge.c")
-        .include("vendor/miniaudio")
-        .include("vendor")
+        .file(format!("{}/sge_audio_bridge.c", vendor))
+        .include(format!("{}/miniaudio", vendor))
+        .include(vendor)
         .define("MA_NO_GENERATION", None)
         .warnings(false)
         .cargo_metadata(false)
@@ -264,14 +269,14 @@ fn build_audio_bridge_shared(out_dir: &str, release_dir: &str, target_os: &str) 
 
 /// Compile GLFW from vendored source as a static archive, then link it into a
 /// separate shared library (libglfw) placed in the release directory.
-fn build_glfw_shared(out_dir: &str, release_dir: &str, target_os: &str, target_env: &str) {
-    let glfw_src = "vendor/glfw/src";
-    let glfw_include = "vendor/glfw/include";
+fn build_glfw_shared(vendor: &str, out_dir: &str, release_dir: &str, target_os: &str, target_env: &str) {
+    let glfw_src = format!("{}/glfw/src", vendor);
+    let glfw_include = format!("{}/glfw/include", vendor);
 
     let mut build = cc::Build::new();
     build
-        .include(glfw_include)
-        .include(glfw_src)
+        .include(&glfw_include)
+        .include(&glfw_src)
         .warnings(false)
         .cargo_metadata(false)
         .pic(true);
@@ -326,8 +331,7 @@ fn build_glfw_shared(out_dir: &str, release_dir: &str, target_os: &str, target_e
             build.define("_DEFAULT_SOURCE", None);
             // When cross-compiling for Linux (e.g. from macOS via zigbuild), X11
             // headers aren't in the default sysroot. Use vendored headers if available.
-            let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
-            let x11_include = format!("{}/vendor/x11-include", manifest_dir);
+            let x11_include = format!("{}/x11-include", vendor);
             if std::path::Path::new(&x11_include).join("X11/Xlib.h").exists() {
                 build.include(&x11_include);
             }
@@ -362,7 +366,7 @@ fn build_glfw_shared(out_dir: &str, release_dir: &str, target_os: &str, target_e
     // symbols to resolve, even if guarded by runtime checks. The stubs use the
     // same _GLFW_COCOA/_GLFW_X11/_GLFW_WIN32 defines to only provide stubs for
     // functions that don't exist on the current platform.
-    build.file("vendor/glfw_platform_stubs.c");
+    build.file(format!("{}/glfw_platform_stubs.c", vendor));
 
     build.compile("glfw3");
 
