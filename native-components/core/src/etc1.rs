@@ -1252,7 +1252,7 @@ mod tests {
         let img_size = (stride * height) as usize;
         let encoded_size = get_encoded_data_size(width, height) as usize;
 
-        let mut input = vec![100u8; img_size];
+        let input = vec![100u8; img_size];
         let mut encoded = vec![0u8; encoded_size];
         let mut decoded = vec![0u8; img_size];
 
@@ -1315,5 +1315,95 @@ mod tests {
         write_be_uint16(&mut buf, 0xFFFF);
         assert_eq!(buf, [0xFF, 0xFF]);
         assert_eq!(read_be_uint16(&buf), 0xFFFF);
+    }
+
+    // -- Additional encoded data size tests ---------------------------------
+
+    #[test]
+    fn test_get_encoded_data_size_non_power_of_2() {
+        // 7x7 -> rounds up to 8x8 -> 4 blocks = 32 bytes
+        assert_eq!(get_encoded_data_size(7, 7), 32);
+        // 10x6 -> rounds up to 12x8 -> 12 blocks = 96/2 = 48 bytes
+        assert_eq!(get_encoded_data_size(10, 6), 48);
+        // 13x1 -> rounds up to 16x4 -> 4 blocks wide x 1 high = 32 bytes
+        assert_eq!(get_encoded_data_size(13, 1), 32);
+    }
+
+    // -- Additional PKM header roundtrip tests ------------------------------
+
+    #[test]
+    fn test_pkm_header_roundtrip_various_sizes() {
+        for &(w, h) in &[(16u32, 16u32), (17, 33), (64, 48), (512, 512), (1, 4)] {
+            let mut header = [0u8; ETC_PKM_HEADER_SIZE];
+            pkm_format_header(&mut header, w, h);
+            assert!(pkm_is_valid(&header), "header should be valid for {}x{}", w, h);
+            assert_eq!(pkm_get_width(&header), w, "width mismatch for {}x{}", w, h);
+            assert_eq!(pkm_get_height(&header), h, "height mismatch for {}x{}", w, h);
+        }
+    }
+
+    // -- Additional encode/decode roundtrip tests ---------------------------
+
+    #[test]
+    fn test_encode_decode_block_not_all_zeros() {
+        // A colorful block should produce non-zero encoded data
+        let mut input = [0u8; ETC1_DECODED_BLOCK_SIZE];
+        for i in 0..16 {
+            input[i * 3] = (i * 17) as u8;       // R ramp
+            input[i * 3 + 1] = (255 - i * 17) as u8; // G inverse ramp
+            input[i * 3 + 2] = 128;               // B constant
+        }
+
+        let mut encoded = [0u8; ETC1_ENCODED_BLOCK_SIZE];
+        encode_block(&input, 0xFFFF, &mut encoded);
+
+        // Encoded data should not be all zeros
+        assert!(encoded.iter().any(|&b| b != 0), "encoded block should not be all zeros");
+
+        let mut decoded = [0u8; ETC1_DECODED_BLOCK_SIZE];
+        decode_block(&encoded, &mut decoded);
+
+        // Decoded data should not be all zeros either
+        assert!(decoded.iter().any(|&b| b != 0), "decoded block should not be all zeros");
+
+        // Check lossy quality: ETC1 can have high per-pixel error on steep
+        // gradients, so we check overall average error is reasonable
+        let mut total_diff: u32 = 0;
+        for i in 0..ETC1_DECODED_BLOCK_SIZE {
+            total_diff += (input[i] as i32 - decoded[i] as i32).unsigned_abs();
+        }
+        let avg_diff = total_diff / ETC1_DECODED_BLOCK_SIZE as u32;
+        assert!(
+            avg_diff <= 40,
+            "average per-byte error {} is too high",
+            avg_diff
+        );
+    }
+
+    #[test]
+    fn test_encode_decode_4x4_image_roundtrip() {
+        // Minimal 4x4 image encode/decode via the image API
+        let width: u32 = 4;
+        let height: u32 = 4;
+        let pixel_size: u32 = 3;
+        let stride = width * pixel_size;
+        let img_size = (stride * height) as usize;
+        let encoded_size = get_encoded_data_size(width, height) as usize;
+
+        // Solid mid-gray image
+        let input = vec![128u8; img_size];
+        let mut encoded = vec![0u8; encoded_size];
+        let result = encode_image(&input, width, height, pixel_size, stride, &mut encoded);
+        assert_eq!(result, 0);
+
+        let mut decoded = vec![0u8; img_size];
+        let result = decode_image(&encoded, &mut decoded, width, height, pixel_size, stride);
+        assert_eq!(result, 0);
+
+        // Solid gray should have very low error
+        for i in 0..img_size {
+            let diff = (input[i] as i32 - decoded[i] as i32).unsigned_abs();
+            assert!(diff <= 16, "byte {} differs by {} (expected ~128, got {})", i, diff, decoded[i]);
+        }
     }
 }

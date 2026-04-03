@@ -613,3 +613,75 @@ pub unsafe extern "C" fn sge_ft_done_glyph(glyph: *mut c_void) {
         FT_Done_Glyph(glyph as FT_Glyph);
     }
 }
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn library_init_and_destroy() {
+        unsafe {
+            let lib = sge_ft_init_freetype();
+            assert!(!lib.is_null(), "FreeType library init should succeed");
+            sge_ft_done_freetype(lib);
+        }
+    }
+
+    #[test]
+    fn get_last_error_after_init() {
+        unsafe {
+            let lib = sge_ft_init_freetype();
+            assert!(!lib.is_null());
+            // After successful init, error code should be 0
+            assert_eq!(sge_ft_get_last_error_code(), 0);
+            sge_ft_done_freetype(lib);
+        }
+    }
+
+    #[test]
+    fn done_null_is_safe() {
+        unsafe {
+            // Should not crash
+            sge_ft_done_freetype(ptr::null_mut());
+            sge_ft_done_face(ptr::null_mut());
+            sge_ft_done_glyph(ptr::null_mut());
+            sge_ft_stroker_done(ptr::null_mut());
+        }
+    }
+
+    #[test]
+    fn new_memory_face_with_invalid_data_returns_null() {
+        unsafe {
+            let lib = sge_ft_init_freetype();
+            assert!(!lib.is_null());
+
+            let garbage = [0u8; 64];
+            let face = sge_ft_new_memory_face(lib, garbage.as_ptr(), garbage.len() as i32, 0);
+            assert!(face.is_null(), "Invalid font data should return null face");
+            assert_ne!(sge_ft_get_last_error_code(), 0, "Should have error after invalid face");
+
+            sge_ft_done_freetype(lib);
+        }
+    }
+
+    #[test]
+    fn stroker_lifecycle() {
+        unsafe {
+            let lib = sge_ft_init_freetype();
+            assert!(!lib.is_null());
+
+            let stroker = sge_ft_stroker_new(lib);
+            assert!(!stroker.is_null(), "Stroker creation should succeed");
+
+            // Set stroker params (should not crash)
+            sge_ft_stroker_set(stroker, 64, 0, 0, 0);
+
+            sge_ft_stroker_done(stroker);
+            sge_ft_done_freetype(lib);
+        }
+    }
+}

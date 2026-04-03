@@ -96,7 +96,7 @@ jobs:
             echo "--- $plat ---"
             ls native-components/target/cross/$plat/ 2>/dev/null || echo "  MISSING!"
             if [[ "$plat" != windows-* ]]; then
-              for lib in libsge_native_ops.a libsge_audio.a libglfw3.a; do
+              for lib in libsge_native_ops.a libsge_audio.a libglfw3.a libsge_freetype.a libsge_physics.a; do
                 if [ ! -f "native-components/target/cross/$plat/$lib" ]; then
                   echo "  MISSING: $lib"
                   MISSING=1
@@ -123,7 +123,7 @@ jobs:
 
       - name: Package and verify JARs
         run: |
-          sbt 'scala-native-sge-ops-provider/packageBin; panama-sge-ops-provider/packageBin; scala-native-angle-provider/packageBin; panama-angle-provider/packageBin; android-sge-ops-provider/packageBin'
+          sbt 'scala-native-sge-core-provider/packageBin; panama-sge-core-provider/packageBin; android-sge-core-provider/packageBin; scala-native-sge-freetype-provider/packageBin; panama-sge-freetype-provider/packageBin; android-sge-freetype-provider/packageBin; scala-native-sge-physics-provider/packageBin; panama-sge-physics-provider/packageBin; android-sge-physics-provider/packageBin; scala-native-angle-provider/packageBin; panama-angle-provider/packageBin'
 
           FAIL=0
           verify_jar() {
@@ -141,33 +141,72 @@ jobs:
             done
           }
 
-          # Scala Native SGE ops: must have .a for all non-Windows platforms
-          SN_OPS_JAR=$(ls providers/scala-native-sge-ops/target/*.jar)
+          # Scala Native SGE core: must have .a for all non-Windows platforms + stubs
+          SN_CORE_JAR=$(ls providers/scala-native-sge-ops/target/*.jar)
           for plat in linux-x86_64 linux-aarch64 macos-x86_64 macos-aarch64; do
-            verify_jar "$SN_OPS_JAR" \
+            verify_jar "$SN_CORE_JAR" \
               "native/$plat/libsge_native_ops.a" \
               "native/$plat/libsge_audio.a" \
-              "native/$plat/libglfw3.a" \
-              "native/$plat/libfreetype.a"
+              "native/$plat/libglfw3.a"
           done
           for plat in windows-x86_64 windows-aarch64; do
-            verify_jar "$SN_OPS_JAR" "native/$plat/sge_native_ops.lib"
+            verify_jar "$SN_CORE_JAR" \
+              "native/$plat/sge_native_ops.lib" \
+              "native/$plat/sge_audio.lib" \
+              "native/$plat/glfw3.lib"
           done
-          verify_jar "$SN_OPS_JAR" "native-bundle.json"
-
-          # Panama SGE ops: must have shared libs for all platforms
-          PANAMA_OPS_JAR=$(ls providers/panama-sge-ops/target/*.jar)
           for plat in linux-x86_64 linux-aarch64; do
-            verify_jar "$PANAMA_OPS_JAR" \
+            verify_jar "$SN_CORE_JAR" "native/$plat/libobjc.a"
+          done
+          verify_jar "$SN_CORE_JAR" "native-bundle.json"
+
+          # Panama SGE core: must have shared libs for all platforms
+          PANAMA_CORE_JAR=$(ls providers/panama-sge-ops/target/*.jar)
+          for plat in linux-x86_64 linux-aarch64; do
+            verify_jar "$PANAMA_CORE_JAR" \
               "native/$plat/libsge_native_ops.so" \
               "native/$plat/libsge_audio.so" \
               "native/$plat/libglfw.so"
           done
           for plat in macos-x86_64 macos-aarch64; do
-            verify_jar "$PANAMA_OPS_JAR" \
+            verify_jar "$PANAMA_CORE_JAR" \
               "native/$plat/libsge_native_ops.dylib" \
               "native/$plat/libsge_audio.dylib" \
               "native/$plat/libglfw.dylib"
+          done
+
+          # Scala Native FreeType: must have .a for all non-Windows platforms
+          SN_FT_JAR=$(ls providers/scala-native-sge-freetype/target/*.jar)
+          for plat in linux-x86_64 linux-aarch64 macos-x86_64 macos-aarch64; do
+            verify_jar "$SN_FT_JAR" \
+              "native/$plat/libsge_freetype.a" \
+              "native/$plat/libfreetype.a"
+          done
+          verify_jar "$SN_FT_JAR" "native-bundle.json"
+
+          # Panama FreeType: must have shared libs
+          PANAMA_FT_JAR=$(ls providers/panama-sge-freetype/target/*.jar)
+          for plat in linux-x86_64 linux-aarch64; do
+            verify_jar "$PANAMA_FT_JAR" "native/$plat/libsge_freetype.so"
+          done
+          for plat in macos-x86_64 macos-aarch64; do
+            verify_jar "$PANAMA_FT_JAR" "native/$plat/libsge_freetype.dylib"
+          done
+
+          # Scala Native Physics: must have .a for all non-Windows platforms
+          SN_PH_JAR=$(ls providers/scala-native-sge-physics/target/*.jar)
+          for plat in linux-x86_64 linux-aarch64 macos-x86_64 macos-aarch64; do
+            verify_jar "$SN_PH_JAR" "native/$plat/libsge_physics.a"
+          done
+          verify_jar "$SN_PH_JAR" "native-bundle.json"
+
+          # Panama Physics: must have shared libs
+          PANAMA_PH_JAR=$(ls providers/panama-sge-physics/target/*.jar)
+          for plat in linux-x86_64 linux-aarch64; do
+            verify_jar "$PANAMA_PH_JAR" "native/$plat/libsge_physics.so"
+          done
+          for plat in macos-x86_64 macos-aarch64; do
+            verify_jar "$PANAMA_PH_JAR" "native/$plat/libsge_physics.dylib"
           done
 
           # ANGLE: must have EGL + GLESv2 for all platforms
@@ -180,10 +219,22 @@ jobs:
             verify_jar "$SN_ANGLE_JAR" "native/$plat/libEGL.dylib" "native/$plat/libGLESv2.dylib"
           done
 
-          # Android: must have .so for all ABIs
-          ANDROID_JAR=$(ls providers/android-sge-ops/target/*.jar)
+          # Android core: must have .so for all ABIs
+          ANDROID_CORE_JAR=$(ls providers/android-sge-ops/target/*.jar)
           for abi in android-aarch64 android-armv7 android-x86_64; do
-            verify_jar "$ANDROID_JAR" "native/$abi/libsge_native_ops.so" "native/$abi/libsge_audio.so"
+            verify_jar "$ANDROID_CORE_JAR" "native/$abi/libsge_native_ops.so" "native/$abi/libsge_audio.so"
+          done
+
+          # Android FreeType: must have .so for all ABIs
+          ANDROID_FT_JAR=$(ls providers/android-sge-freetype/target/*.jar)
+          for abi in android-aarch64 android-armv7 android-x86_64; do
+            verify_jar "$ANDROID_FT_JAR" "native/$abi/libsge_freetype.so"
+          done
+
+          # Android Physics: must have .so for all ABIs
+          ANDROID_PH_JAR=$(ls providers/android-sge-physics/target/*.jar)
+          for abi in android-aarch64 android-armv7 android-x86_64; do
+            verify_jar "$ANDROID_PH_JAR" "native/$abi/libsge_physics.so"
           done
 
           if [ "$FAIL" -eq 1 ]; then

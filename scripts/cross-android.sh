@@ -62,17 +62,16 @@ for entry in "${ANDROID_TARGETS[@]}"; do
   echo ""
   echo "--- $classifier ($rust_target) ---"
 
-  # Android: default features + android JNI bridge (no GLFW — handled by build.rs)
+  # Android: build all workspace members (no GLFW — handled by build.rs)
   cargo build --release --target "$rust_target" \
-    --manifest-path "$NATIVE_DIR/Cargo.toml" \
-    --features "android"
+    --manifest-path "$NATIVE_DIR/Cargo.toml"
 
   # Collect
   src_dir="$NATIVE_DIR/target/$rust_target/release"
   dest_dir="$NATIVE_DIR/target/cross/$classifier"
   mkdir -p "$dest_dir"
 
-  for f in libsge_native_ops.so libsge_audio.so; do
+  for f in libsge_native_ops.so libsge_audio.so libsge_freetype.so libsge_physics.so; do
     [ -f "$src_dir/$f" ] && cp "$src_dir/$f" "$dest_dir/"
   done
 
