@@ -4,3 +4,7 @@ addSbtPlugin("com.github.sbt" % "sbt-git" % "2.1.0")
 addSbtPlugin("com.github.sbt" % "sbt-pgp" % "2.3.1")
 
 ThisBuild / libraryDependencySchemes += "org.scala-lang.modules" %% "scala-xml" % VersionScheme.Always
+
+// multiarch-core Platform model (used in build.sbt for platform definitions)
+resolvers += "Maven Central Snapshots" at "https://central.sonatype.com/repository/maven-snapshots/"
+libraryDependencies += "com.kubuszok" %% "multiarch-core" % "a2e683a872fc8fa85cd39003765dd8de794b44b9-SNAPSHOT"

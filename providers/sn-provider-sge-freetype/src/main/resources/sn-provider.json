@@ -1,0 +1,24 @@
+{
+  "provider-schema-version": "0.1.0",
+  "provider-name": "sge-freetype",
+  "configs": [
+    {
+      "config-name": "sge_freetype",
+      "linux-x86_64":    { "binary": "libsge_freetype.a", "flags-groups": [] },
+      "linux-aarch64":   { "binary": "libsge_freetype.a", "flags-groups": [] },
+      "macos-x86_64":    { "binary": "libsge_freetype.a", "flags-groups": [] },
+      "macos-aarch64":   { "binary": "libsge_freetype.a", "flags-groups": [] },
+      "windows-x86_64":  { "binary": "sge_freetype.lib",  "flags-groups": [] },
+      "windows-aarch64": { "binary": "sge_freetype.lib",  "flags-groups": [] }
+    },
+    {
+      "config-name": "freetype",
+      "linux-x86_64":    { "binary": "libfreetype.a", "flags-groups": [] },
+      "linux-aarch64":   { "binary": "libfreetype.a", "flags-groups": [] },
+      "macos-x86_64":    { "binary": "libfreetype.a", "flags-groups": [["-lbz2"], ["-lpng"], ["-lz"]] },
+      "macos-aarch64":   { "binary": "libfreetype.a", "flags-groups": [["-lbz2"], ["-lpng"], ["-lz"]] },
+      "windows-x86_64":  { "binary": "libfreetype.a", "flags-groups": [] },
+      "windows-aarch64": { "binary": "libfreetype.a", "flags-groups": [] }
+    }
+  ]
+}

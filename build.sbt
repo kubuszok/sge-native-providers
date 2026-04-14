@@ -1,3 +1,5 @@
+import multiarch.core.Platform
+
 lazy val isCI = sys.env.get("CI").contains("true")
 ThisBuild / packageDoc / publishArtifact := false
 
@@ -11,13 +13,13 @@ val mavenCentralSnapshots = "Maven Central Snapshots" at "https://central.sonaty
 
 val publishSettings = Seq(
   organization := "com.kubuszok",
-  homepage := Some(url("https://github.com/kubuszok/sge-native-components")),
+  homepage := Some(url("https://github.com/kubuszok/sge-native-providers")),
   organizationHomepage := Some(url("https://kubuszok.com")),
   licenses := Seq("Apache-2.0" -> url("https://www.apache.org/licenses/LICENSE-2.0")),
   scmInfo := Some(
     ScmInfo(
-      url("https://github.com/kubuszok/sge-native-components/"),
-      "scm:git:git@github.com:kubuszok/sge-native-components.git"
+      url("https://github.com/kubuszok/sge-native-providers/"),
+      "scm:git:git@github.com:kubuszok/sge-native-providers.git"
     )
   ),
   startYear := Some(2026),
@@ -27,7 +29,7 @@ val publishSettings = Seq(
   pomExtra := (
     <issueManagement>
       <system>GitHub issues</system>
-      <url>https://github.com/kubuszok/sge-native-components/issues</url>
+      <url>https://github.com/kubuszok/sge-native-providers/issues</url>
     </issueManagement>
   ),
   publishTo := {
@@ -45,22 +47,6 @@ val publishSettings = Seq(
 val noPublishSettings =
   Seq(publish / skip := true, publishArtifact := false)
 
-// ── Platform definitions ──────────────────────────────────────────────
-
-// Desktop platform classifiers (must match sbt-multi-arch-release Platform.desktop)
-val desktopPlatforms = Seq(
-  "linux-x86_64", "linux-aarch64",
-  "macos-x86_64", "macos-aarch64",
-  "windows-x86_64", "windows-aarch64"
-)
-
-// Android ABI classifiers
-val androidAbis = Seq(
-  ("aarch64-linux-android", "android-aarch64"),
-  ("armv7-linux-androideabi", "android-armv7"),
-  ("x86_64-linux-android", "android-x86_64")
-)
-
 // ── Shared helpers ────────────────────────────────────────────────────
 
 // Rust cross-compilation output root
@@ -68,20 +54,30 @@ val crossDir = settingKey[File]("Root directory containing cross-compiled native
 ThisBuild / crossDir := (ThisBuild / baseDirectory).value / "native-components" / "target" / "cross"
 
 /** Create fat JAR mappings: native/<platform-classifier>/<file> for matching files. */
-def fatJarMappings(crossRoot: File, platforms: Seq[String], fileFilter: String => Boolean): Seq[(File, String)] =
-  platforms.flatMap { plat =>
-    val dir = crossRoot / plat
+def fatJarMappings(crossRoot: File, platforms: Seq[Platform], fileFilter: String => Boolean): Seq[(File, String)] =
+  platforms.flatMap { p =>
+    val dir = crossRoot / p.classifier
     if (dir.exists())
-      sbt.IO.listFiles(dir).filter(f => f.isFile && fileFilter(f.getName)).map(f => f -> s"native/$plat/${f.getName}").toSeq
+      sbt.IO.listFiles(dir).filter(f => f.isFile && fileFilter(f.getName)).map(f => f -> s"native/${p.classifier}/${f.getName}").toSeq
     else Seq.empty
   }
 
-// Shared library extensions per OS
-def isSharedLib(name: String): Boolean =
-  name.endsWith(".dylib") || name.endsWith(".so") || name.endsWith(".dll")
+/** Create fat JAR mappings for android: reads from Cargo target/<rustTarget>/release/ */
+def androidJarMappings(base: File, platforms: Seq[Platform], fileFilter: String => Boolean): Seq[(File, String)] =
+  platforms.flatMap { p =>
+    val dir = base / p.rustTarget / "release"
+    if (dir.exists())
+      sbt.IO.listFiles(dir).filter(f => f.isFile && fileFilter(f.getName)).map(f => f -> s"native/${p.classifier}/${f.getName}").toSeq
+    else Seq.empty
+  }
 
-def isStaticLib(name: String): Boolean =
-  name.endsWith(".a") || name.endsWith(".lib")
+// Common provider settings
+val providerSettings = Seq(
+  autoScalaLibrary := false,
+  crossPaths       := false,
+  Compile / packageDoc / publishArtifact := false,
+  Compile / packageSrc / publishArtifact := false
+)
 
 // ── Root project ──────────────────────────────────────────────────────
 
@@ -91,20 +87,20 @@ lazy val root = project
   .settings(publishSettings *)
   .settings(noPublishSettings *)
   .aggregate(
-    `scala-native-sge-core-provider`,
-    `panama-sge-core-provider`,
-    `android-sge-core-provider`,
-    `scala-native-sge-freetype-provider`,
-    `panama-sge-freetype-provider`,
-    `android-sge-freetype-provider`,
-    `scala-native-sge-physics-provider`,
-    `panama-sge-physics-provider`,
-    `android-sge-physics-provider`,
-    `scala-native-angle-provider`,
-    `panama-angle-provider`
+    `sn-provider-sge`,
+    `pnm-provider-sge-desktop`,
+    `pnm-provider-sge-android`,
+    `sn-provider-sge-freetype`,
+    `pnm-provider-sge-freetype-desktop`,
+    `pnm-provider-sge-freetype-android`,
+    `sn-provider-sge-physics`,
+    `pnm-provider-sge-physics-desktop`,
+    `pnm-provider-sge-physics-android`,
+    `sn-provider-sge-angle`,
+    `pnm-provider-sge-angle`
   )
   .settings(
-    name := "sge-native-components-root",
+    name := "sge-native-providers-root",
     commands += Command.command("ci-release") { state =>
       val extracted = Project.extract(state)
       val tags      = extracted.get(git.gitCurrentTags)
@@ -114,21 +110,18 @@ lazy val root = project
   )
 
 // ── SGE core native ops (sge_native_ops + sge_audio + glfw3) ─────────
+// Depends on angle transitively so pulling sn-provider-sge pulls everything.
 
-// Scala Native: static archives (.a) for linking
-lazy val `scala-native-sge-core-provider` = project
-  .in(file("providers/scala-native-sge-ops"))
+lazy val `sn-provider-sge` = project
+  .in(file("providers/sn-provider-sge"))
+  .dependsOn(`sn-provider-sge-angle`)
   .settings(publishSettings *)
+  .settings(providerSettings *)
   .settings(
-    name             := "scala-native-sge-core-provider",
-    autoScalaLibrary := false,
-    crossPaths       := false,
-    Compile / packageDoc / publishArtifact := false,
-    Compile / packageSrc / publishArtifact := false,
-    // Fat JAR: native/<platform>/lib*.a for all 6 desktop platforms
+    name := "sn-provider-sge",
     Compile / packageBin / mappings ++= {
       val cross = crossDir.value
-      val sgeOpsLibs = Set(
+      val libs = Set(
         "libsge_native_ops.a", "sge_native_ops.lib",
         "libsge_audio.a",
         "libglfw3.a",
@@ -137,215 +130,154 @@ lazy val `scala-native-sge-core-provider` = project
         // Linux libobjc stub (for @link("objc") in Scala Native)
         "libobjc.a"
       )
-      fatJarMappings(cross, desktopPlatforms, sgeOpsLibs.contains)
+      fatJarMappings(cross, Platform.desktop, libs.contains)
     }
   )
 
-// JVM (Panama): shared libraries (.dylib/.so/.dll) for runtime loading
-lazy val `panama-sge-core-provider` = project
-  .in(file("providers/panama-sge-ops"))
+lazy val `pnm-provider-sge-desktop` = project
+  .in(file("providers/pnm-provider-sge-desktop"))
+  .dependsOn(`pnm-provider-sge-angle`)
   .settings(publishSettings *)
+  .settings(providerSettings *)
   .settings(
-    name             := "panama-sge-core-provider",
-    autoScalaLibrary := false,
-    crossPaths       := false,
-    Compile / packageDoc / publishArtifact := false,
-    Compile / packageSrc / publishArtifact := false,
-    // Fat JAR: native/<platform>/*.{dylib,so,dll} for all 6 desktop platforms
+    name := "pnm-provider-sge-desktop",
     Compile / packageBin / mappings ++= {
       val cross = crossDir.value
-      val sgeOpsLibs = Set(
+      val libs = Set(
         "libsge_native_ops.dylib", "libsge_native_ops.so", "sge_native_ops.dll",
         "sge_native_ops.dll.lib",
         "libsge_audio.dylib", "libsge_audio.so", "sge_audio.dll",
         "libglfw.dylib", "libglfw.so", "glfw3.dll"
       )
-      fatJarMappings(cross, desktopPlatforms, sgeOpsLibs.contains)
+      fatJarMappings(cross, Platform.desktop, libs.contains)
     }
   )
 
-// Android: shared libraries (.so) for 3 ABIs
-lazy val `android-sge-core-provider` = project
-  .in(file("providers/android-sge-ops"))
+lazy val `pnm-provider-sge-android` = project
+  .in(file("providers/pnm-provider-sge-android"))
   .settings(publishSettings *)
+  .settings(providerSettings *)
   .settings(
-    name             := "android-sge-core-provider",
-    autoScalaLibrary := false,
-    crossPaths       := false,
-    Compile / packageDoc / publishArtifact := false,
-    Compile / packageSrc / publishArtifact := false,
-    // Fat JAR: native/<android-classifier>/*.so for 3 Android ABIs
+    name := "pnm-provider-sge-android",
     Compile / packageBin / mappings ++= {
       val base = (ThisBuild / baseDirectory).value / "native-components" / "target"
-      androidAbis.flatMap { case (rustTarget, classifier) =>
-        val dir = base / rustTarget / "release"
-        if (dir.exists()) {
-          val sgeOpsLibs = Set("libsge_native_ops.so", "libsge_audio.so")
-          sbt.IO.listFiles(dir).filter(f => f.isFile && sgeOpsLibs.contains(f.getName))
-            .map(f => f -> s"native/$classifier/${f.getName}").toSeq
-        } else Seq.empty
-      }
+      val libs = Set("libsge_native_ops.so", "libsge_audio.so")
+      androidJarMappings(base, Platform.android, libs.contains)
     }
   )
 
 // ── FreeType (sge_freetype + libfreetype) ─────────────────────────────
 
-// Scala Native: static archives for linking
-lazy val `scala-native-sge-freetype-provider` = project
-  .in(file("providers/scala-native-sge-freetype"))
+lazy val `sn-provider-sge-freetype` = project
+  .in(file("providers/sn-provider-sge-freetype"))
   .settings(publishSettings *)
+  .settings(providerSettings *)
   .settings(
-    name             := "scala-native-sge-freetype-provider",
-    autoScalaLibrary := false,
-    crossPaths       := false,
-    Compile / packageDoc / publishArtifact := false,
-    Compile / packageSrc / publishArtifact := false,
+    name := "sn-provider-sge-freetype",
     Compile / packageBin / mappings ++= {
       val cross = crossDir.value
       val libs = Set("libsge_freetype.a", "sge_freetype.lib", "libfreetype.a")
-      fatJarMappings(cross, desktopPlatforms, libs.contains)
+      fatJarMappings(cross, Platform.desktop, libs.contains)
     }
   )
 
-// JVM (Panama): shared libraries for runtime loading
-lazy val `panama-sge-freetype-provider` = project
-  .in(file("providers/panama-sge-freetype"))
+lazy val `pnm-provider-sge-freetype-desktop` = project
+  .in(file("providers/pnm-provider-sge-freetype-desktop"))
   .settings(publishSettings *)
+  .settings(providerSettings *)
   .settings(
-    name             := "panama-sge-freetype-provider",
-    autoScalaLibrary := false,
-    crossPaths       := false,
-    Compile / packageDoc / publishArtifact := false,
-    Compile / packageSrc / publishArtifact := false,
+    name := "pnm-provider-sge-freetype-desktop",
     Compile / packageBin / mappings ++= {
       val cross = crossDir.value
       val libs = Set("libsge_freetype.dylib", "libsge_freetype.so", "sge_freetype.dll")
-      fatJarMappings(cross, desktopPlatforms, libs.contains)
+      fatJarMappings(cross, Platform.desktop, libs.contains)
     }
   )
 
-// Android: shared libraries for 3 ABIs
-lazy val `android-sge-freetype-provider` = project
-  .in(file("providers/android-sge-freetype"))
+lazy val `pnm-provider-sge-freetype-android` = project
+  .in(file("providers/pnm-provider-sge-freetype-android"))
   .settings(publishSettings *)
+  .settings(providerSettings *)
   .settings(
-    name             := "android-sge-freetype-provider",
-    autoScalaLibrary := false,
-    crossPaths       := false,
-    Compile / packageDoc / publishArtifact := false,
-    Compile / packageSrc / publishArtifact := false,
+    name := "pnm-provider-sge-freetype-android",
     Compile / packageBin / mappings ++= {
       val base = (ThisBuild / baseDirectory).value / "native-components" / "target"
-      androidAbis.flatMap { case (rustTarget, classifier) =>
-        val dir = base / rustTarget / "release"
-        if (dir.exists()) {
-          val libs = Set("libsge_freetype.so")
-          sbt.IO.listFiles(dir).filter(f => f.isFile && libs.contains(f.getName))
-            .map(f => f -> s"native/$classifier/${f.getName}").toSeq
-        } else Seq.empty
-      }
+      val libs = Set("libsge_freetype.so")
+      androidJarMappings(base, Platform.android, libs.contains)
     }
   )
 
 // ── Physics (sge_physics via Rapier2D) ────────────────────────────────
 
-// Scala Native: static archives for linking
-lazy val `scala-native-sge-physics-provider` = project
-  .in(file("providers/scala-native-sge-physics"))
+lazy val `sn-provider-sge-physics` = project
+  .in(file("providers/sn-provider-sge-physics"))
   .settings(publishSettings *)
+  .settings(providerSettings *)
   .settings(
-    name             := "scala-native-sge-physics-provider",
-    autoScalaLibrary := false,
-    crossPaths       := false,
-    Compile / packageDoc / publishArtifact := false,
-    Compile / packageSrc / publishArtifact := false,
+    name := "sn-provider-sge-physics",
     Compile / packageBin / mappings ++= {
       val cross = crossDir.value
       val libs = Set("libsge_physics.a", "sge_physics.lib")
-      fatJarMappings(cross, desktopPlatforms, libs.contains)
+      fatJarMappings(cross, Platform.desktop, libs.contains)
     }
   )
 
-// JVM (Panama): shared libraries for runtime loading
-lazy val `panama-sge-physics-provider` = project
-  .in(file("providers/panama-sge-physics"))
+lazy val `pnm-provider-sge-physics-desktop` = project
+  .in(file("providers/pnm-provider-sge-physics-desktop"))
   .settings(publishSettings *)
+  .settings(providerSettings *)
   .settings(
-    name             := "panama-sge-physics-provider",
-    autoScalaLibrary := false,
-    crossPaths       := false,
-    Compile / packageDoc / publishArtifact := false,
-    Compile / packageSrc / publishArtifact := false,
+    name := "pnm-provider-sge-physics-desktop",
     Compile / packageBin / mappings ++= {
       val cross = crossDir.value
       val libs = Set("libsge_physics.dylib", "libsge_physics.so", "sge_physics.dll")
-      fatJarMappings(cross, desktopPlatforms, libs.contains)
+      fatJarMappings(cross, Platform.desktop, libs.contains)
     }
   )
 
-// Android: shared libraries for 3 ABIs
-lazy val `android-sge-physics-provider` = project
-  .in(file("providers/android-sge-physics"))
+lazy val `pnm-provider-sge-physics-android` = project
+  .in(file("providers/pnm-provider-sge-physics-android"))
   .settings(publishSettings *)
+  .settings(providerSettings *)
   .settings(
-    name             := "android-sge-physics-provider",
-    autoScalaLibrary := false,
-    crossPaths       := false,
-    Compile / packageDoc / publishArtifact := false,
-    Compile / packageSrc / publishArtifact := false,
+    name := "pnm-provider-sge-physics-android",
     Compile / packageBin / mappings ++= {
       val base = (ThisBuild / baseDirectory).value / "native-components" / "target"
-      androidAbis.flatMap { case (rustTarget, classifier) =>
-        val dir = base / rustTarget / "release"
-        if (dir.exists()) {
-          val libs = Set("libsge_physics.so")
-          sbt.IO.listFiles(dir).filter(f => f.isFile && libs.contains(f.getName))
-            .map(f => f -> s"native/$classifier/${f.getName}").toSeq
-        } else Seq.empty
-      }
+      val libs = Set("libsge_physics.so")
+      androidJarMappings(base, Platform.android, libs.contains)
     }
   )
 
 // ── ANGLE (EGL + GLESv2) ──────────────────────────────────────────────
 
-// Scala Native: ANGLE static/shared libs for linking
-lazy val `scala-native-angle-provider` = project
-  .in(file("providers/scala-native-angle"))
+lazy val `sn-provider-sge-angle` = project
+  .in(file("providers/sn-provider-sge-angle"))
   .settings(publishSettings *)
+  .settings(providerSettings *)
   .settings(
-    name             := "scala-native-angle-provider",
-    autoScalaLibrary := false,
-    crossPaths       := false,
-    Compile / packageDoc / publishArtifact := false,
-    Compile / packageSrc / publishArtifact := false,
-    // ANGLE libs in cross dir (downloaded by angle scripts)
+    name := "sn-provider-sge-angle",
     Compile / packageBin / mappings ++= {
       val cross = crossDir.value
-      val angleLibs = Set(
+      val libs = Set(
         "libEGL.dylib", "libEGL.so", "libEGL.dll",
         "libGLESv2.dylib", "libGLESv2.so", "GLESv2.dll"
       )
-      fatJarMappings(cross, desktopPlatforms, angleLibs.contains)
+      fatJarMappings(cross, Platform.desktop, libs.contains)
     }
   )
 
-// JVM (Panama): same ANGLE shared libs for runtime loading
-lazy val `panama-angle-provider` = project
-  .in(file("providers/panama-angle"))
+lazy val `pnm-provider-sge-angle` = project
+  .in(file("providers/pnm-provider-sge-angle"))
   .settings(publishSettings *)
+  .settings(providerSettings *)
   .settings(
-    name             := "panama-angle-provider",
-    autoScalaLibrary := false,
-    crossPaths       := false,
-    Compile / packageDoc / publishArtifact := false,
-    Compile / packageSrc / publishArtifact := false,
-    // Same ANGLE shared libs as scala-native, used at JVM runtime
+    name := "pnm-provider-sge-angle",
     Compile / packageBin / mappings ++= {
       val cross = crossDir.value
-      val angleLibs = Set(
+      val libs = Set(
         "libEGL.dylib", "libEGL.so", "libEGL.dll",
         "libGLESv2.dylib", "libGLESv2.so", "GLESv2.dll"
       )
-      fatJarMappings(cross, desktopPlatforms, angleLibs.contains)
+      fatJarMappings(cross, Platform.desktop, libs.contains)
     }
   )
