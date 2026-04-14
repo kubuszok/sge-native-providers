@@ -1,0 +1,29 @@
+{
+  "provider-schema-version": "0.1.0",
+  "provider-name": "sge",
+  "configs": [
+    {
+      "config-name": "sge_native_ops",
+      "linux-x86_64":    { "binary": "libsge_native_ops.a", "flags-groups": [["-lpthread"], ["-ldl"]] },
+      "linux-aarch64":   { "binary": "libsge_native_ops.a", "flags-groups": [["-lpthread"], ["-ldl"]] },
+      "macos-x86_64":    { "binary": "libsge_native_ops.a", "flags-groups": [] },
+      "macos-aarch64":   { "binary": "libsge_native_ops.a", "flags-groups": [] },
+      "windows-x86_64":  { "binary": "sge_native_ops.lib",  "flags-groups": [["-lntdll"], ["-lmsvcrt"]] },
+      "windows-aarch64": { "binary": "sge_native_ops.lib",  "flags-groups": [["-lntdll"], ["-lmsvcrt"]] }
+    },
+    {
+      "config-name": "sge_audio",
+      "linux-x86_64":    { "binary": "libsge_audio.a", "flags-groups": [] },
+      "linux-aarch64":   { "binary": "libsge_audio.a", "flags-groups": [] },
+      "macos-x86_64":    { "binary": "libsge_audio.a", "flags-groups": [["-framework", "CoreAudio"], ["-framework", "AudioToolbox"]] },
+      "macos-aarch64":   { "binary": "libsge_audio.a", "flags-groups": [["-framework", "CoreAudio"], ["-framework", "AudioToolbox"]] }
+    },
+    {
+      "config-name": "glfw3",
+      "linux-x86_64":    { "binary": "libglfw3.a", "flags-groups": [] },
+      "linux-aarch64":   { "binary": "libglfw3.a", "flags-groups": [] },
+      "macos-x86_64":    { "binary": "libglfw3.a", "flags-groups": [["-framework", "Cocoa"], ["-framework", "IOKit"], ["-framework", "CoreFoundation"], ["-framework", "CoreVideo"], ["-framework", "CoreGraphics"], ["-framework", "QuartzCore"], ["-lobjc"]] },
+      "macos-aarch64":   { "binary": "libglfw3.a", "flags-groups": [["-framework", "Cocoa"], ["-framework", "IOKit"], ["-framework", "CoreFoundation"], ["-framework", "CoreVideo"], ["-framework", "CoreGraphics"], ["-framework", "QuartzCore"], ["-lobjc"]] }
+    }
+  ]
+}
