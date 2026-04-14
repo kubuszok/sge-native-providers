@@ -1,0 +1,15 @@
+{
+  "provider-schema-version": "0.1.0",
+  "provider-name": "sge-freetype-desktop",
+  "configs": [
+    {
+      "config-name": "sge_freetype",
+      "linux-x86_64":    { "binary": "libsge_freetype.so" },
+      "linux-aarch64":   { "binary": "libsge_freetype.so" },
+      "macos-x86_64":    { "binary": "libsge_freetype.dylib" },
+      "macos-aarch64":   { "binary": "libsge_freetype.dylib" },
+      "windows-x86_64":  { "binary": "sge_freetype.dll" },
+      "windows-aarch64": { "binary": "sge_freetype.dll" }
+    }
+  ]
+}

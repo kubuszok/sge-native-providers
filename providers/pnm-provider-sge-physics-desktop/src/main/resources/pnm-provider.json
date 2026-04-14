@@ -1,0 +1,15 @@
+{
+  "provider-schema-version": "0.1.0",
+  "provider-name": "sge-physics-desktop",
+  "configs": [
+    {
+      "config-name": "sge_physics",
+      "linux-x86_64":    { "binary": "libsge_physics.so" },
+      "linux-aarch64":   { "binary": "libsge_physics.so" },
+      "macos-x86_64":    { "binary": "libsge_physics.dylib" },
+      "macos-aarch64":   { "binary": "libsge_physics.dylib" },
+      "windows-x86_64":  { "binary": "sge_physics.dll" },
+      "windows-aarch64": { "binary": "sge_physics.dll" }
+    }
+  ]
+}
