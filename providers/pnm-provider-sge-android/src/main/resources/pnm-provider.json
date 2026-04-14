@@ -1,6 +1,6 @@
 {
   "provider-schema-version": "0.1.0",
-  "provider-name": "sge-ops-android",
+  "provider-name": "sge-android",
   "configs": [
     {
       "config-name": "sge_native_ops",
