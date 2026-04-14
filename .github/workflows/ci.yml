@@ -123,7 +123,7 @@ jobs:
 
       - name: Package and verify JARs
         run: |
-          sbt 'scala-native-sge-core-provider/packageBin; panama-sge-core-provider/packageBin; android-sge-core-provider/packageBin; scala-native-sge-freetype-provider/packageBin; panama-sge-freetype-provider/packageBin; android-sge-freetype-provider/packageBin; scala-native-sge-physics-provider/packageBin; panama-sge-physics-provider/packageBin; android-sge-physics-provider/packageBin; scala-native-angle-provider/packageBin; panama-angle-provider/packageBin'
+          sbt 'sn-provider-sge/packageBin; pnm-provider-sge-desktop/packageBin; pnm-provider-sge-android/packageBin; sn-provider-sge-freetype/packageBin; pnm-provider-sge-freetype-desktop/packageBin; pnm-provider-sge-freetype-android/packageBin; sn-provider-sge-physics/packageBin; pnm-provider-sge-physics-desktop/packageBin; pnm-provider-sge-physics-android/packageBin; sn-provider-sge-angle/packageBin; pnm-provider-sge-angle/packageBin'
 
           FAIL=0
           verify_jar() {
