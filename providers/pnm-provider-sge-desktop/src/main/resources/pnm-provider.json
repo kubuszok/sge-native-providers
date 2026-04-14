@@ -1,0 +1,33 @@
+{
+  "provider-schema-version": "0.1.0",
+  "provider-name": "sge-ops-desktop",
+  "configs": [
+    {
+      "config-name": "sge_native_ops",
+      "linux-x86_64":    { "binary": "libsge_native_ops.so" },
+      "linux-aarch64":   { "binary": "libsge_native_ops.so" },
+      "macos-x86_64":    { "binary": "libsge_native_ops.dylib" },
+      "macos-aarch64":   { "binary": "libsge_native_ops.dylib" },
+      "windows-x86_64":  { "binary": "sge_native_ops.dll" },
+      "windows-aarch64": { "binary": "sge_native_ops.dll" }
+    },
+    {
+      "config-name": "sge_audio",
+      "linux-x86_64":    { "binary": "libsge_audio.so" },
+      "linux-aarch64":   { "binary": "libsge_audio.so" },
+      "macos-x86_64":    { "binary": "libsge_audio.dylib" },
+      "macos-aarch64":   { "binary": "libsge_audio.dylib" },
+      "windows-x86_64":  { "binary": "sge_audio.dll" },
+      "windows-aarch64": { "binary": "sge_audio.dll" }
+    },
+    {
+      "config-name": "glfw",
+      "linux-x86_64":    { "binary": "libglfw.so" },
+      "linux-aarch64":   { "binary": "libglfw.so" },
+      "macos-x86_64":    { "binary": "libglfw.dylib" },
+      "macos-aarch64":   { "binary": "libglfw.dylib" },
+      "windows-x86_64":  { "binary": "glfw3.dll" },
+      "windows-aarch64": { "binary": "glfw3.dll" }
+    }
+  ]
+}

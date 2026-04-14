@@ -1,0 +1,12 @@
+{
+  "provider-schema-version": "0.1.0",
+  "provider-name": "sge-physics-android",
+  "configs": [
+    {
+      "config-name": "sge_physics",
+      "android-aarch64": { "binary": "libsge_physics.so" },
+      "android-armv7":   { "binary": "libsge_physics.so" },
+      "android-x86_64":  { "binary": "libsge_physics.so" }
+    }
+  ]
+}

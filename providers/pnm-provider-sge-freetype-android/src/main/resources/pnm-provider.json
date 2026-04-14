@@ -1,0 +1,12 @@
+{
+  "provider-schema-version": "0.1.0",
+  "provider-name": "sge-freetype-android",
+  "configs": [
+    {
+      "config-name": "sge_freetype",
+      "android-aarch64": { "binary": "libsge_freetype.so" },
+      "android-armv7":   { "binary": "libsge_freetype.so" },
+      "android-x86_64":  { "binary": "libsge_freetype.so" }
+    }
+  ]
+}

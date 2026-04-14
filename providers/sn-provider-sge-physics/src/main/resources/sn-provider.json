@@ -1,0 +1,15 @@
+{
+  "provider-schema-version": "0.1.0",
+  "provider-name": "sge-physics",
+  "configs": [
+    {
+      "config-name": "sge_physics",
+      "linux-x86_64":    { "binary": "libsge_physics.a", "flags-groups": [["-lpthread"]] },
+      "linux-aarch64":   { "binary": "libsge_physics.a", "flags-groups": [["-lpthread"]] },
+      "macos-x86_64":    { "binary": "libsge_physics.a", "flags-groups": [] },
+      "macos-aarch64":   { "binary": "libsge_physics.a", "flags-groups": [] },
+      "windows-x86_64":  { "binary": "sge_physics.lib",  "flags-groups": [] },
+      "windows-aarch64": { "binary": "sge_physics.lib",  "flags-groups": [] }
+    }
+  ]
+}

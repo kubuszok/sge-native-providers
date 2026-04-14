@@ -1,0 +1,24 @@
+{
+  "provider-schema-version": "0.1.0",
+  "provider-name": "sge-angle",
+  "configs": [
+    {
+      "config-name": "EGL",
+      "linux-x86_64":    { "binary": "libEGL.so",    "flags-groups": [] },
+      "linux-aarch64":   { "binary": "libEGL.so",    "flags-groups": [] },
+      "macos-x86_64":    { "binary": "libEGL.dylib", "flags-groups": [] },
+      "macos-aarch64":   { "binary": "libEGL.dylib", "flags-groups": [] },
+      "windows-x86_64":  { "binary": "libEGL.dll",   "flags-groups": [] },
+      "windows-aarch64": { "binary": "libEGL.dll",   "flags-groups": [] }
+    },
+    {
+      "config-name": "GLESv2",
+      "linux-x86_64":    { "binary": "libGLESv2.so",    "flags-groups": [] },
+      "linux-aarch64":   { "binary": "libGLESv2.so",    "flags-groups": [] },
+      "macos-x86_64":    { "binary": "libGLESv2.dylib", "flags-groups": [] },
+      "macos-aarch64":   { "binary": "libGLESv2.dylib", "flags-groups": [] },
+      "windows-x86_64":  { "binary": "GLESv2.dll",      "flags-groups": [] },
+      "windows-aarch64": { "binary": "GLESv2.dll",      "flags-groups": [] }
+    }
+  ]
+}
