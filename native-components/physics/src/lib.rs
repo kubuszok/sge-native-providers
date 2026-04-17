@@ -11,16 +11,17 @@
 
 use std::ffi::c_void;
 use std::slice;
+use std::sync::mpsc;
 
 use rapier2d::prelude::*;
-use rapier2d::parry::query::ShapeCastOptions;
+use rapier2d::parry::query::{DefaultQueryDispatcher, ShapeCastOptions};
 
 // ---------------------------------------------------------------------------
 // World state
 // ---------------------------------------------------------------------------
 
 struct PhysicsWorld {
-    gravity: Vector<Real>,
+    gravity: Vector,
     integration_parameters: IntegrationParameters,
     physics_pipeline: PhysicsPipeline,
     island_manager: IslandManager,
@@ -31,7 +32,6 @@ struct PhysicsWorld {
     impulse_joint_set: ImpulseJointSet,
     multibody_joint_set: MultibodyJointSet,
     ccd_solver: CCDSolver,
-    query_pipeline: QueryPipeline,
     // Contact event buffers
     contact_start_buf: Vec<(u64, u64)>,
     contact_stop_buf: Vec<(u64, u64)>,
@@ -40,7 +40,7 @@ struct PhysicsWorld {
 impl PhysicsWorld {
     fn new(gx: f32, gy: f32) -> Self {
         PhysicsWorld {
-            gravity: vector![gx, gy],
+            gravity: Vector::new(gx, gy),
             integration_parameters: IntegrationParameters::default(),
             physics_pipeline: PhysicsPipeline::new(),
             island_manager: IslandManager::new(),
@@ -51,7 +51,6 @@ impl PhysicsWorld {
             impulse_joint_set: ImpulseJointSet::new(),
             multibody_joint_set: MultibodyJointSet::new(),
             ccd_solver: CCDSolver::new(),
-            query_pipeline: QueryPipeline::new(),
             contact_start_buf: Vec::new(),
             contact_stop_buf: Vec::new(),
         }
@@ -64,13 +63,13 @@ impl PhysicsWorld {
         self.contact_start_buf.clear();
         self.contact_stop_buf.clear();
 
-        let (contact_send, contact_recv) = crossbeam::channel::unbounded();
-        let (intersection_send, _intersection_recv) = crossbeam::channel::unbounded();
+        let (contact_send, contact_recv) = mpsc::channel();
+        let (force_send, _force_recv) = mpsc::channel();
 
-        let event_handler = ChannelEventCollector::new(contact_send, intersection_send);
+        let event_handler = ChannelEventCollector::new(contact_send, force_send);
 
         self.physics_pipeline.step(
-            &self.gravity,
+            self.gravity,
             &self.integration_parameters,
             &mut self.island_manager,
             &mut self.broad_phase,
@@ -80,7 +79,6 @@ impl PhysicsWorld {
             &mut self.impulse_joint_set,
             &mut self.multibody_joint_set,
             &mut self.ccd_solver,
-            None,
             &(),
             &event_handler,
         );
@@ -102,8 +100,6 @@ impl PhysicsWorld {
                 }
             }
         }
-
-        self.query_pipeline.update(&self.collider_set);
     }
 }
 
@@ -164,7 +160,7 @@ pub unsafe extern "C" fn sge_phys_world_step(world: *mut c_void, dt: f32) {
 #[no_mangle]
 pub unsafe extern "C" fn sge_phys_world_set_gravity(world: *mut c_void, gx: f32, gy: f32) {
     let w = &mut *(world as *mut PhysicsWorld);
-    w.gravity = vector![gx, gy];
+    w.gravity = Vector::new(gx, gy);
 }
 
 /// Fills `out` with [gx, gy].
@@ -183,7 +179,7 @@ pub unsafe extern "C" fn sge_phys_world_get_gravity(world: *mut c_void, out: *mu
 unsafe fn create_body(world: *mut c_void, body_type: RigidBodyType, x: f32, y: f32, angle: f32) -> u64 {
     let w = &mut *(world as *mut PhysicsWorld);
     let body = RigidBodyBuilder::new(body_type)
-        .translation(vector![x, y])
+        .translation(Vector::new(x, y))
         .rotation(angle)
         .build();
     body_handle_to_u64(w.rigid_body_set.insert(body))
@@ -272,7 +268,7 @@ pub unsafe extern "C" fn sge_phys_body_get_angular_velocity(world: *mut c_void, 
 pub unsafe extern "C" fn sge_phys_body_set_position(world: *mut c_void, body: u64, x: f32, y: f32) {
     let w = &mut *(world as *mut PhysicsWorld);
     if let Some(b) = w.rigid_body_set.get_mut(u64_to_body_handle(body)) {
-        b.set_translation(vector![x, y], true);
+        b.set_translation(Vector::new(x, y), true);
     }
 }
 
@@ -288,7 +284,7 @@ pub unsafe extern "C" fn sge_phys_body_set_angle(world: *mut c_void, body: u64, 
 pub unsafe extern "C" fn sge_phys_body_set_linear_velocity(world: *mut c_void, body: u64, vx: f32, vy: f32) {
     let w = &mut *(world as *mut PhysicsWorld);
     if let Some(b) = w.rigid_body_set.get_mut(u64_to_body_handle(body)) {
-        b.set_linvel(vector![vx, vy], true);
+        b.set_linvel(Vector::new(vx, vy), true);
     }
 }
 
@@ -304,7 +300,7 @@ pub unsafe extern "C" fn sge_phys_body_set_angular_velocity(world: *mut c_void, 
 pub unsafe extern "C" fn sge_phys_body_apply_force(world: *mut c_void, body: u64, fx: f32, fy: f32) {
     let w = &mut *(world as *mut PhysicsWorld);
     if let Some(b) = w.rigid_body_set.get_mut(u64_to_body_handle(body)) {
-        b.add_force(vector![fx, fy], true);
+        b.add_force(Vector::new(fx, fy), true);
     }
 }
 
@@ -312,7 +308,7 @@ pub unsafe extern "C" fn sge_phys_body_apply_force(world: *mut c_void, body: u64
 pub unsafe extern "C" fn sge_phys_body_apply_impulse(world: *mut c_void, body: u64, ix: f32, iy: f32) {
     let w = &mut *(world as *mut PhysicsWorld);
     if let Some(b) = w.rigid_body_set.get_mut(u64_to_body_handle(body)) {
-        b.apply_impulse(vector![ix, iy], true);
+        b.apply_impulse(Vector::new(ix, iy), true);
     }
 }
 
@@ -383,7 +379,7 @@ pub unsafe extern "C" fn sge_phys_body_apply_force_at_point(
 ) {
     let w = &mut *(world as *mut PhysicsWorld);
     if let Some(b) = w.rigid_body_set.get_mut(u64_to_body_handle(body)) {
-        b.add_force_at_point(vector![fx, fy], point![px, py], true);
+        b.add_force_at_point(Vector::new(fx, fy), Vector::new(px, py), true);
     }
 }
 
@@ -393,7 +389,7 @@ pub unsafe extern "C" fn sge_phys_body_apply_impulse_at_point(
 ) {
     let w = &mut *(world as *mut PhysicsWorld);
     if let Some(b) = w.rigid_body_set.get_mut(u64_to_body_handle(body)) {
-        b.apply_impulse_at_point(vector![ix, iy], point![px, py], true);
+        b.apply_impulse_at_point(Vector::new(ix, iy), Vector::new(px, py), true);
     }
 }
 
@@ -582,7 +578,7 @@ pub unsafe extern "C" fn sge_phys_body_get_velocity_at_point(
     let w = &*(world as *mut PhysicsWorld);
     let arr = slice::from_raw_parts_mut(out, 2);
     if let Some(b) = w.rigid_body_set.get(u64_to_body_handle(body)) {
-        let vel = b.velocity_at_point(&point![px, py]);
+        let vel = b.velocity_at_point(Vector::new(px, py));
         arr[0] = vel.x;
         arr[1] = vel.y;
     } else {
@@ -654,8 +650,8 @@ pub unsafe extern "C" fn sge_phys_create_polygon_collider(
 ) -> u64 {
     let w = &mut *(world as *mut PhysicsWorld);
     let verts = slice::from_raw_parts(vertices, (vertex_count * 2) as usize);
-    let points: Vec<Point<Real>> = (0..vertex_count as usize)
-        .map(|i| point![verts[i * 2], verts[i * 2 + 1]])
+    let points: Vec<Vector> = (0..vertex_count as usize)
+        .map(|i| Vector::new(verts[i * 2], verts[i * 2 + 1]))
         .collect();
 
     let collider = ColliderBuilder::convex_hull(&points)
@@ -785,7 +781,7 @@ pub unsafe extern "C" fn sge_phys_collider_set_position_wrt_parent(
 ) {
     let w = &mut *(world as *mut PhysicsWorld);
     if let Some(c) = w.collider_set.get_mut(u64_to_collider_handle(collider)) {
-        c.set_position_wrt_parent(Isometry::new(vector![x, y], angle));
+        c.set_position_wrt_parent(Pose::new(Vector::new(x, y), angle));
     }
 }
 
@@ -929,14 +925,14 @@ pub unsafe extern "C" fn sge_phys_create_trimesh_collider(
     let verts = slice::from_raw_parts(vertices, (vertex_count * 2) as usize);
     let idxs  = slice::from_raw_parts(indices, index_count as usize);
 
-    let points: Vec<Point<Real>> = (0..vertex_count as usize)
-        .map(|i| point![verts[i * 2], verts[i * 2 + 1]])
+    let points: Vec<Vector> = (0..vertex_count as usize)
+        .map(|i| Vector::new(verts[i * 2], verts[i * 2 + 1]))
         .collect();
     let tris: Vec<[u32; 3]> = idxs.chunks_exact(3)
         .map(|c| [c[0], c[1], c[2]])
         .collect();
 
-    let collider = ColliderBuilder::trimesh(points, tris).build();
+    let collider = ColliderBuilder::trimesh(points, tris).unwrap().build();
     let handle = w.collider_set.insert_with_parent(
         collider, u64_to_body_handle(body), &mut w.rigid_body_set,
     );
@@ -953,8 +949,8 @@ pub unsafe extern "C" fn sge_phys_create_heightfield_collider(
 ) -> u64 {
     let w = &mut *(world as *mut PhysicsWorld);
     let h = slice::from_raw_parts(heights, num_cols as usize);
-    let heights_vec = nalgebra::DVector::from_row_slice(h);
-    let collider = ColliderBuilder::heightfield(heights_vec, vector![scale_x, scale_y]).build();
+    let heights_vec: Vec<Real> = h.to_vec();
+    let collider = ColliderBuilder::heightfield(heights_vec, Vector::new(scale_x, scale_y)).build();
     let handle = w.collider_set.insert_with_parent(
         collider, u64_to_body_handle(body), &mut w.rigid_body_set,
     );
@@ -980,6 +976,7 @@ pub unsafe extern "C" fn sge_phys_collider_set_collision_groups(
         c.set_collision_groups(InteractionGroups::new(
             Group::from_bits_truncate(memberships),
             Group::from_bits_truncate(filter),
+            InteractionTestMode::And,
         ));
     }
 }
@@ -1018,6 +1015,7 @@ pub unsafe extern "C" fn sge_phys_collider_set_solver_groups(
         c.set_solver_groups(InteractionGroups::new(
             Group::from_bits_truncate(memberships),
             Group::from_bits_truncate(filter),
+            InteractionTestMode::And,
         ));
     }
 }
@@ -1056,8 +1054,8 @@ pub unsafe extern "C" fn sge_phys_create_revolute_joint(
 ) -> u64 {
     let w = &mut *(world as *mut PhysicsWorld);
     let joint = RevoluteJointBuilder::new()
-        .local_anchor1(point![anchor_x, anchor_y])
-        .local_anchor2(point![0.0, 0.0])
+        .local_anchor1(Vector::new(anchor_x, anchor_y))
+        .local_anchor2(Vector::new(0.0, 0.0))
         .build();
     let handle = w.impulse_joint_set.insert(
         u64_to_body_handle(body1),
@@ -1077,7 +1075,7 @@ pub unsafe extern "C" fn sge_phys_create_prismatic_joint(
     axis_y: f32,
 ) -> u64 {
     let w = &mut *(world as *mut PhysicsWorld);
-    let axis = UnitVector::new_normalize(vector![axis_x, axis_y]);
+    let axis = Vector::new(axis_x, axis_y).normalize();
     let joint = PrismaticJointBuilder::new(axis).build();
     let handle = w.impulse_joint_set.insert(
         u64_to_body_handle(body1),
@@ -1132,7 +1130,7 @@ pub unsafe extern "C" fn sge_phys_revolute_joint_enable_limits(
     enable: i32,
 ) {
     let w = &mut *(world as *mut PhysicsWorld);
-    if let Some(j) = w.impulse_joint_set.get_mut(u64_to_joint_handle(joint)) {
+    if let Some(j) = w.impulse_joint_set.get_mut(u64_to_joint_handle(joint), true) {
         if let Some(rev) = j.data.as_revolute_mut() {
             if enable != 0 {
                 // Enable with reasonable default limits if not already set
@@ -1156,7 +1154,7 @@ pub unsafe extern "C" fn sge_phys_revolute_joint_set_limits(
     upper: f32,
 ) {
     let w = &mut *(world as *mut PhysicsWorld);
-    if let Some(j) = w.impulse_joint_set.get_mut(u64_to_joint_handle(joint)) {
+    if let Some(j) = w.impulse_joint_set.get_mut(u64_to_joint_handle(joint), true) {
         if let Some(rev) = j.data.as_revolute_mut() {
             rev.set_limits([lower, upper]);
         }
@@ -1214,7 +1212,7 @@ pub unsafe extern "C" fn sge_phys_revolute_joint_enable_motor(
     enable: i32,
 ) {
     let w = &mut *(world as *mut PhysicsWorld);
-    if let Some(j) = w.impulse_joint_set.get_mut(u64_to_joint_handle(joint)) {
+    if let Some(j) = w.impulse_joint_set.get_mut(u64_to_joint_handle(joint), true) {
         if let Some(rev) = j.data.as_revolute_mut() {
             if enable != 0 {
                 // Enable motor with velocity target
@@ -1235,7 +1233,7 @@ pub unsafe extern "C" fn sge_phys_revolute_joint_set_motor_speed(
     speed: f32,
 ) {
     let w = &mut *(world as *mut PhysicsWorld);
-    if let Some(j) = w.impulse_joint_set.get_mut(u64_to_joint_handle(joint)) {
+    if let Some(j) = w.impulse_joint_set.get_mut(u64_to_joint_handle(joint), true) {
         if let Some(rev) = j.data.as_revolute_mut() {
             // Get current damping factor, preserve it
             let damping = rev.motor().map(|m| m.damping).unwrap_or(1.0);
@@ -1252,7 +1250,7 @@ pub unsafe extern "C" fn sge_phys_revolute_joint_set_max_motor_torque(
     torque: f32,
 ) {
     let w = &mut *(world as *mut PhysicsWorld);
-    if let Some(j) = w.impulse_joint_set.get_mut(u64_to_joint_handle(joint)) {
+    if let Some(j) = w.impulse_joint_set.get_mut(u64_to_joint_handle(joint), true) {
         if let Some(rev) = j.data.as_revolute_mut() {
             rev.set_motor_max_force(torque);
         }
@@ -1311,7 +1309,7 @@ pub unsafe extern "C" fn sge_phys_prismatic_joint_enable_limits(
     enable: i32,
 ) {
     let w = &mut *(world as *mut PhysicsWorld);
-    if let Some(j) = w.impulse_joint_set.get_mut(u64_to_joint_handle(joint)) {
+    if let Some(j) = w.impulse_joint_set.get_mut(u64_to_joint_handle(joint), true) {
         if let Some(pris) = j.data.as_prismatic_mut() {
             if enable != 0 {
                 // Enable with reasonable default limits if not already set
@@ -1334,7 +1332,7 @@ pub unsafe extern "C" fn sge_phys_prismatic_joint_set_limits(
     upper: f32,
 ) {
     let w = &mut *(world as *mut PhysicsWorld);
-    if let Some(j) = w.impulse_joint_set.get_mut(u64_to_joint_handle(joint)) {
+    if let Some(j) = w.impulse_joint_set.get_mut(u64_to_joint_handle(joint), true) {
         if let Some(pris) = j.data.as_prismatic_mut() {
             pris.set_limits([lower, upper]);
         }
@@ -1371,7 +1369,7 @@ pub unsafe extern "C" fn sge_phys_prismatic_joint_enable_motor(
     enable: i32,
 ) {
     let w = &mut *(world as *mut PhysicsWorld);
-    if let Some(j) = w.impulse_joint_set.get_mut(u64_to_joint_handle(joint)) {
+    if let Some(j) = w.impulse_joint_set.get_mut(u64_to_joint_handle(joint), true) {
         if let Some(pris) = j.data.as_prismatic_mut() {
             if enable != 0 {
                 pris.set_motor_velocity(0.0, 1.0);
@@ -1390,7 +1388,7 @@ pub unsafe extern "C" fn sge_phys_prismatic_joint_set_motor_speed(
     speed: f32,
 ) {
     let w = &mut *(world as *mut PhysicsWorld);
-    if let Some(j) = w.impulse_joint_set.get_mut(u64_to_joint_handle(joint)) {
+    if let Some(j) = w.impulse_joint_set.get_mut(u64_to_joint_handle(joint), true) {
         if let Some(pris) = j.data.as_prismatic_mut() {
             let damping = pris.motor().map(|m| m.damping).unwrap_or(1.0);
             pris.set_motor_velocity(speed, damping);
@@ -1406,7 +1404,7 @@ pub unsafe extern "C" fn sge_phys_prismatic_joint_set_max_motor_force(
     force: f32,
 ) {
     let w = &mut *(world as *mut PhysicsWorld);
-    if let Some(j) = w.impulse_joint_set.get_mut(u64_to_joint_handle(joint)) {
+    if let Some(j) = w.impulse_joint_set.get_mut(u64_to_joint_handle(joint), true) {
         if let Some(pris) = j.data.as_prismatic_mut() {
             pris.set_motor_max_force(force);
         }
@@ -1432,7 +1430,7 @@ pub unsafe extern "C" fn sge_phys_prismatic_joint_get_translation(
                 // Compute the displacement between body centers
                 // This gives an approximate translation along the joint axis
                 let diff = b2.translation() - b1.translation();
-                return diff.norm();
+                return diff.length();
             }
         }
     }
@@ -1472,7 +1470,7 @@ pub unsafe extern "C" fn sge_phys_rope_joint_set_max_distance(
     max_dist: f32,
 ) {
     let w = &mut *(world as *mut PhysicsWorld);
-    if let Some(j) = w.impulse_joint_set.get_mut(u64_to_joint_handle(joint)) {
+    if let Some(j) = w.impulse_joint_set.get_mut(u64_to_joint_handle(joint), true) {
         if let Some(rope) = j.data.as_rope_mut() {
             rope.set_max_distance(max_dist);
         }
@@ -1534,7 +1532,7 @@ pub unsafe extern "C" fn sge_phys_motor_joint_set_linear_offset(
     y: f32,
 ) {
     let w = &mut *(world as *mut PhysicsWorld);
-    if let Some(j) = w.impulse_joint_set.get_mut(u64_to_joint_handle(joint)) {
+    if let Some(j) = w.impulse_joint_set.get_mut(u64_to_joint_handle(joint), true) {
         let sx = j.data.motor(JointAxis::LinX).map(|m| m.stiffness).unwrap_or(100.0);
         let dx = j.data.motor(JointAxis::LinX).map(|m| m.damping).unwrap_or(20.0);
         let sy = j.data.motor(JointAxis::LinY).map(|m| m.stiffness).unwrap_or(100.0);
@@ -1570,7 +1568,7 @@ pub unsafe extern "C" fn sge_phys_motor_joint_set_angular_offset(
     angle: f32,
 ) {
     let w = &mut *(world as *mut PhysicsWorld);
-    if let Some(j) = w.impulse_joint_set.get_mut(u64_to_joint_handle(joint)) {
+    if let Some(j) = w.impulse_joint_set.get_mut(u64_to_joint_handle(joint), true) {
         let s = j.data.motor(JointAxis::AngX).map(|m| m.stiffness).unwrap_or(100.0);
         let d = j.data.motor(JointAxis::AngX).map(|m| m.damping).unwrap_or(20.0);
         j.data.set_motor(JointAxis::AngX, angle, 0.0, s, d);
@@ -1598,7 +1596,7 @@ pub unsafe extern "C" fn sge_phys_motor_joint_set_max_force(
     force: f32,
 ) {
     let w = &mut *(world as *mut PhysicsWorld);
-    if let Some(j) = w.impulse_joint_set.get_mut(u64_to_joint_handle(joint)) {
+    if let Some(j) = w.impulse_joint_set.get_mut(u64_to_joint_handle(joint), true) {
         j.data.set_motor_max_force(JointAxis::LinX, force);
         j.data.set_motor_max_force(JointAxis::LinY, force);
     }
@@ -1612,7 +1610,7 @@ pub unsafe extern "C" fn sge_phys_motor_joint_set_max_torque(
     torque: f32,
 ) {
     let w = &mut *(world as *mut PhysicsWorld);
-    if let Some(j) = w.impulse_joint_set.get_mut(u64_to_joint_handle(joint)) {
+    if let Some(j) = w.impulse_joint_set.get_mut(u64_to_joint_handle(joint), true) {
         j.data.set_motor_max_force(JointAxis::AngX, torque);
     }
 }
@@ -1626,7 +1624,7 @@ pub unsafe extern "C" fn sge_phys_motor_joint_set_correction_factor(
     factor: f32,
 ) {
     let w = &mut *(world as *mut PhysicsWorld);
-    if let Some(j) = w.impulse_joint_set.get_mut(u64_to_joint_handle(joint)) {
+    if let Some(j) = w.impulse_joint_set.get_mut(u64_to_joint_handle(joint), true) {
         // Map correction factor to stiffness; damping = 2 * sqrt(stiffness) for critical damping
         let stiffness = factor * 100.0;
         let damping   = 2.0 * stiffness.sqrt();
@@ -1681,7 +1679,7 @@ pub unsafe extern "C" fn sge_phys_contact_pair_points(
 
     if let Some(pair) = w.narrow_phase.contact_pair(c1, c2) {
         // Transform local contact points to world space using collider positions
-        let pos1 = w.collider_set.get(c1).map(|c| *c.position()).unwrap_or(Isometry::identity());
+        let pos1 = w.collider_set.get(c1).map(|c| *c.position()).unwrap_or(Pose::identity());
         for manifold in &pair.manifolds {
             let normal = manifold.data.normal;
             for pt in &manifold.points {
@@ -1715,7 +1713,7 @@ pub unsafe extern "C" fn sge_phys_create_segment_collider(
     y2: f32,
 ) -> u64 {
     let w = &mut *(world as *mut PhysicsWorld);
-    let collider = ColliderBuilder::segment(point![x1, y1], point![x2, y2]).build();
+    let collider = ColliderBuilder::segment(Vector::new(x1, y1), Vector::new(x2, y2)).build();
     let handle = w.collider_set.insert_with_parent(
         collider,
         u64_to_body_handle(body),
@@ -1745,8 +1743,8 @@ pub unsafe extern "C" fn sge_phys_create_polyline_collider(
     }
     let w = &mut *(world as *mut PhysicsWorld);
     let verts = slice::from_raw_parts(vertices, (vertex_count * 2) as usize);
-    let points: Vec<Point<Real>> = (0..vertex_count as usize)
-        .map(|i| point![verts[i * 2], verts[i * 2 + 1]])
+    let points: Vec<Vector> = (0..vertex_count as usize)
+        .map(|i| Vector::new(verts[i * 2], verts[i * 2 + 1]))
         .collect();
 
     // Build index pairs for consecutive segments
@@ -1837,15 +1835,19 @@ pub unsafe extern "C" fn sge_phys_ray_cast(
     out: *mut f32,
 ) -> i32 {
     let w = &*(world as *mut PhysicsWorld);
-    let ray = Ray::new(point![origin_x, origin_y], vector![dir_x, dir_y]);
+    let ray = Ray::new(Vector::new(origin_x, origin_y), Vector::new(dir_x, dir_y));
 
-    if let Some((handle, intersection)) = w.query_pipeline.cast_ray_and_get_normal(
+    let query_pipeline = w.broad_phase.as_query_pipeline(
+        &DefaultQueryDispatcher,
         &w.rigid_body_set,
         &w.collider_set,
+        QueryFilter::default(),
+    );
+
+    if let Some((handle, intersection)) = query_pipeline.cast_ray_and_get_normal(
         &ray,
         max_dist,
         true,
-        QueryFilter::default(),
     ) {
         let hit_point = ray.point_at(intersection.time_of_impact);
         let arr = slice::from_raw_parts_mut(out, 9);
@@ -1887,20 +1889,24 @@ pub unsafe extern "C" fn sge_phys_query_aabb(
     max_results: i32,
 ) -> i32 {
     let w = &*(world as *mut PhysicsWorld);
-    let aabb = Aabb::new(point![min_x, min_y], point![max_x, max_y]);
+    let aabb = Aabb::new(Vector::new(min_x, min_y), Vector::new(max_x, max_y));
     let out = slice::from_raw_parts_mut(out_colliders, max_results as usize);
     let mut count = 0i32;
 
-    w.query_pipeline.colliders_with_aabb_intersecting_aabb(
-        &aabb,
-        |handle| {
-            if count < max_results {
-                out[count as usize] = collider_handle_to_u64(*handle);
-                count += 1;
-            }
-            count < max_results // continue if we have room
-        },
+    let query_pipeline = w.broad_phase.as_query_pipeline(
+        &DefaultQueryDispatcher,
+        &w.rigid_body_set,
+        &w.collider_set,
+        QueryFilter::default(),
     );
+
+    for (handle, _collider) in query_pipeline.intersect_aabb_conservative(aabb) {
+        if count >= max_results {
+            break;
+        }
+        out[count as usize] = collider_handle_to_u64(handle);
+        count += 1;
+    }
     count
 }
 
@@ -1914,27 +1920,26 @@ pub unsafe extern "C" fn sge_phys_query_point(
     max_results: i32,
 ) -> i32 {
     let w = &*(world as *mut PhysicsWorld);
-    let point = point![x, y];
+    let pt = Vector::new(x, y);
     let out = slice::from_raw_parts_mut(out_bodies, max_results as usize);
     let mut count = 0i32;
 
-    w.query_pipeline.intersections_with_point(
+    let query_pipeline = w.broad_phase.as_query_pipeline(
+        &DefaultQueryDispatcher,
         &w.rigid_body_set,
         &w.collider_set,
-        &point,
         QueryFilter::default(),
-        |handle| {
-            if count < max_results {
-                if let Some(collider) = w.collider_set.get(handle) {
-                    if let Some(parent) = collider.parent() {
-                        out[count as usize] = body_handle_to_u64(parent);
-                        count += 1;
-                    }
-                }
-            }
-            count < max_results // continue if we have room
-        },
     );
+
+    for (_handle, collider) in query_pipeline.intersect_point(pt) {
+        if count >= max_results {
+            break;
+        }
+        if let Some(parent) = collider.parent() {
+            out[count as usize] = body_handle_to_u64(parent);
+            count += 1;
+        }
+    }
     count
 }
 
@@ -2066,7 +2071,7 @@ pub unsafe extern "C" fn sge_phys_create_spring_joint(
 #[no_mangle]
 pub unsafe extern "C" fn sge_phys_spring_joint_set_rest_length(world: *mut c_void, joint: u64, rest_length: f32) {
     let w = &mut *(world as *mut PhysicsWorld);
-    if let Some(j) = w.impulse_joint_set.get_mut(u64_to_joint_handle(joint)) {
+    if let Some(j) = w.impulse_joint_set.get_mut(u64_to_joint_handle(joint), true) {
         let s = j.data.motor(JointAxis::LinX).map(|m| m.stiffness).unwrap_or(100.0);
         let d = j.data.motor(JointAxis::LinX).map(|m| m.damping).unwrap_or(10.0);
         j.data.set_motor(JointAxis::LinX, rest_length, 0.0, s, d);
@@ -2087,7 +2092,7 @@ pub unsafe extern "C" fn sge_phys_spring_joint_set_params(
     world: *mut c_void, joint: u64, stiffness: f32, damping: f32,
 ) {
     let w = &mut *(world as *mut PhysicsWorld);
-    if let Some(j) = w.impulse_joint_set.get_mut(u64_to_joint_handle(joint)) {
+    if let Some(j) = w.impulse_joint_set.get_mut(u64_to_joint_handle(joint), true) {
         let target = j.data.motor(JointAxis::LinX).map(|m| m.target_pos).unwrap_or(0.0);
         j.data.set_motor(JointAxis::LinX, target, 0.0, stiffness, damping);
         j.data.set_motor(JointAxis::LinY, 0.0, 0.0, stiffness, damping);
@@ -2116,22 +2121,27 @@ pub unsafe extern "C" fn sge_phys_cast_shape(
 
     let shape: Box<dyn Shape> = match shape_type {
         0 => Box::new(Ball::new(params[0])),
-        1 => Box::new(Cuboid::new(vector![params[0], params[1]])),
+        1 => Box::new(Cuboid::new(Vector::new(params[0], params[1]))),
         2 => Box::new(Capsule::new_y(params[0], params[1])),
         _ => return 0,
     };
 
-    let origin = Isometry::new(vector![origin_x, origin_y], 0.0);
-    let dir    = vector![dir_x, dir_y];
+    let origin = Pose::new(Vector::new(origin_x, origin_y), 0.0);
+    let dir    = Vector::new(dir_x, dir_y);
 
-    if let Some((handle, toi_result)) = w.query_pipeline.cast_shape(
-        &w.rigid_body_set, &w.collider_set,
-        &origin, &dir, shape.as_ref(),
-        ShapeCastOptions { max_time_of_impact: max_dist, ..Default::default() },
+    let query_pipeline = w.broad_phase.as_query_pipeline(
+        &DefaultQueryDispatcher,
+        &w.rigid_body_set,
+        &w.collider_set,
         QueryFilter::default(),
+    );
+
+    if let Some((handle, toi_result)) = query_pipeline.cast_shape(
+        &origin, dir, shape.as_ref(),
+        ShapeCastOptions { max_time_of_impact: max_dist, ..Default::default() },
     ) {
         let arr = slice::from_raw_parts_mut(out, 7);
-        let hit_point = point![origin_x, origin_y] + dir * toi_result.time_of_impact;
+        let hit_point = Vector::new(origin_x, origin_y) + dir * toi_result.time_of_impact;
         arr[0] = hit_point.x;
         arr[1] = hit_point.y;
         arr[2] = toi_result.normal1.x;
@@ -2156,31 +2166,33 @@ pub unsafe extern "C" fn sge_phys_ray_cast_all(
     out_hits: *mut f32, max_hits: i32,
 ) -> i32 {
     let w = &*(world as *mut PhysicsWorld);
-    let ray = Ray::new(point![ox, oy], vector![dx, dy]);
+    let ray = Ray::new(Vector::new(ox, oy), Vector::new(dx, dy));
     let arr = slice::from_raw_parts_mut(out_hits, (max_hits * 7) as usize);
     let mut count = 0i32;
 
-    w.query_pipeline.intersections_with_ray(
-        &w.rigid_body_set, &w.collider_set,
-        &ray, max_dist, true,
+    let query_pipeline = w.broad_phase.as_query_pipeline(
+        &DefaultQueryDispatcher,
+        &w.rigid_body_set,
+        &w.collider_set,
         QueryFilter::default(),
-        |handle, intersection| {
-            if count < max_hits {
-                let idx = (count * 7) as usize;
-                let hit = ray.point_at(intersection.time_of_impact);
-                arr[idx]     = hit.x;
-                arr[idx + 1] = hit.y;
-                arr[idx + 2] = intersection.normal.x;
-                arr[idx + 3] = intersection.normal.y;
-                arr[idx + 4] = intersection.time_of_impact;
-                let ch = collider_handle_to_u64(handle);
-                arr[idx + 5] = f32::from_bits(ch as u32);
-                arr[idx + 6] = f32::from_bits((ch >> 32) as u32);
-                count += 1;
-            }
-            count < max_hits // continue if room
-        },
     );
+
+    for (handle, _collider, intersection) in query_pipeline.intersect_ray(ray, max_dist, true) {
+        if count >= max_hits {
+            break;
+        }
+        let idx = (count * 7) as usize;
+        let hit = ray.point_at(intersection.time_of_impact);
+        arr[idx]     = hit.x;
+        arr[idx + 1] = hit.y;
+        arr[idx + 2] = intersection.normal.x;
+        arr[idx + 3] = intersection.normal.y;
+        arr[idx + 4] = intersection.time_of_impact;
+        let ch = collider_handle_to_u64(handle);
+        arr[idx + 5] = f32::from_bits(ch as u32);
+        arr[idx + 6] = f32::from_bits((ch >> 32) as u32);
+        count += 1;
+    }
     count
 }
 
@@ -2191,12 +2203,17 @@ pub unsafe extern "C" fn sge_phys_project_point(
     world: *mut c_void, x: f32, y: f32, out: *mut f32,
 ) -> i32 {
     let w = &*(world as *mut PhysicsWorld);
-    let point = point![x, y];
+    let pt = Vector::new(x, y);
 
-    if let Some((handle, projection)) = w.query_pipeline.project_point(
-        &w.rigid_body_set, &w.collider_set,
-        &point, true,
+    let query_pipeline = w.broad_phase.as_query_pipeline(
+        &DefaultQueryDispatcher,
+        &w.rigid_body_set,
+        &w.collider_set,
         QueryFilter::default(),
+    );
+
+    if let Some((handle, projection)) = query_pipeline.project_point(
+        pt, Real::MAX, true,
     ) {
         let arr = slice::from_raw_parts_mut(out, 5);
         arr[0] = projection.point.x;
@@ -2241,20 +2258,21 @@ pub unsafe extern "C" fn sge_phys_poll_intersection_stop_events(
 #[no_mangle]
 pub unsafe extern "C" fn sge_phys_world_set_num_solver_iterations(world: *mut c_void, iters: i32) {
     let w = &mut *(world as *mut PhysicsWorld);
-    w.integration_parameters.num_solver_iterations = std::num::NonZeroUsize::new(iters as usize)
-        .unwrap_or(std::num::NonZeroUsize::new(4).unwrap());
+    w.integration_parameters.num_solver_iterations = (iters as usize).max(1);
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn sge_phys_world_get_num_solver_iterations(world: *mut c_void) -> i32 {
     let w = &*(world as *mut PhysicsWorld);
-    w.integration_parameters.num_solver_iterations.get() as i32
+    w.integration_parameters.num_solver_iterations as i32
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn sge_phys_world_set_num_additional_friction_iterations(world: *mut c_void, iters: i32) {
     let w = &mut *(world as *mut PhysicsWorld);
-    w.integration_parameters.num_additional_friction_iterations = iters as usize;
+    // num_additional_friction_iterations was removed in rapier 0.32;
+    // use num_internal_stabilization_iterations as the closest equivalent.
+    w.integration_parameters.num_internal_stabilization_iterations = iters as usize;
 }
 
 #[no_mangle]
