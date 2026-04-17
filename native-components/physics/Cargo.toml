@@ -10,5 +10,5 @@ crate-type = ["cdylib", "staticlib"]
 
 [dependencies]
 # 2D physics engine (pure Rust — cross-compiles to all targets)
-rapier2d = "0.22"
+rapier2d = "0.32"
 crossbeam = "0.8"
