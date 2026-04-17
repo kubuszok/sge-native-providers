@@ -6,7 +6,7 @@
 #   physics/  → libsge_physics.{a,so,dylib,dll}
 
 [workspace]
-members = ["core", "freetype", "physics"]
+members = ["core", "freetype", "physics", "physics3d"]
 resolver = "2"
 
 [workspace.package]
