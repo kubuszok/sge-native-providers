@@ -4,9 +4,9 @@ lazy val isCI = sys.env.get("CI").contains("true")
 ThisBuild / packageDoc / publishArtifact := false
 
 // Version from git tags
-git.useGitDescribe       := true
-git.uncommittedSignifier := Some("SNAPSHOT")
-git.gitUncommittedChanges := git.gitCurrentTags.value.isEmpty
+ThisBuild / git.useGitDescribe       := true
+ThisBuild / git.uncommittedSignifier := Some("SNAPSHOT")
+ThisBuild / git.gitUncommittedChanges := git.gitCurrentTags.value.isEmpty
 
 // Used to publish snapshots to Maven Central.
 val mavenCentralSnapshots = "Maven Central Snapshots" at "https://central.sonatype.com/repository/maven-snapshots"
