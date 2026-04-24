@@ -16,14 +16,18 @@
       "linux-x86_64":    { "binary": "libsge_audio.a", "flags-groups": [] },
       "linux-aarch64":   { "binary": "libsge_audio.a", "flags-groups": [] },
       "macos-x86_64":    { "binary": "libsge_audio.a", "flags-groups": [["-framework", "CoreAudio"], ["-framework", "AudioToolbox"]] },
-      "macos-aarch64":   { "binary": "libsge_audio.a", "flags-groups": [["-framework", "CoreAudio"], ["-framework", "AudioToolbox"]] }
+      "macos-aarch64":   { "binary": "libsge_audio.a", "flags-groups": [["-framework", "CoreAudio"], ["-framework", "AudioToolbox"]] },
+      "windows-x86_64":  { "binary": "sge_audio.lib",  "flags-groups": [["-lole32"], ["-lwinmm"]] },
+      "windows-aarch64": { "binary": "sge_audio.lib",  "flags-groups": [["-lole32"], ["-lwinmm"]] }
     },
     {
       "config-name": "glfw3",
       "linux-x86_64":    { "binary": "libglfw3.a", "flags-groups": [] },
       "linux-aarch64":   { "binary": "libglfw3.a", "flags-groups": [] },
       "macos-x86_64":    { "binary": "libglfw3.a", "flags-groups": [["-framework", "Cocoa"], ["-framework", "IOKit"], ["-framework", "CoreFoundation"], ["-framework", "CoreVideo"], ["-framework", "CoreGraphics"], ["-framework", "QuartzCore"], ["-lobjc"]] },
-      "macos-aarch64":   { "binary": "libglfw3.a", "flags-groups": [["-framework", "Cocoa"], ["-framework", "IOKit"], ["-framework", "CoreFoundation"], ["-framework", "CoreVideo"], ["-framework", "CoreGraphics"], ["-framework", "QuartzCore"], ["-lobjc"]] }
+      "macos-aarch64":   { "binary": "libglfw3.a", "flags-groups": [["-framework", "Cocoa"], ["-framework", "IOKit"], ["-framework", "CoreFoundation"], ["-framework", "CoreVideo"], ["-framework", "CoreGraphics"], ["-framework", "QuartzCore"], ["-lobjc"]] },
+      "windows-x86_64":  { "binary": "glfw3.lib",  "flags-groups": [["-lgdi32"], ["-lshell32"], ["-luser32"]] },
+      "windows-aarch64": { "binary": "glfw3.lib",  "flags-groups": [["-lgdi32"], ["-lshell32"], ["-luser32"]] }
     }
   ]
 }
