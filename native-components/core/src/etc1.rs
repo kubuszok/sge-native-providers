@@ -267,8 +267,7 @@ fn choose_modifier(
     let r = p_base_colors[0] as i32;
     let g = p_base_colors[1] as i32;
     let b = p_base_colors[2] as i32;
-    for i in 0..4 {
-        let modifier = p_modifier_table[i];
+    for (i, &modifier) in p_modifier_table.iter().enumerate() {
         let decoded_g = clamp(g + modifier) as i32;
         let score = (6 * square(decoded_g - pixel_g)) as u32;
         if score >= best_score {
@@ -342,7 +341,7 @@ fn etc_encode_subblock_helper(
 
 #[inline]
 fn in_range_4bit_signed(color: i32) -> bool {
-    color >= -4 && color <= 3
+    (-4..=3).contains(&color)
 }
 
 fn etc_encode_base_colors(
@@ -529,7 +528,7 @@ pub fn encode_image(
     stride: u32,
     output: &mut [u8],
 ) -> i32 {
-    if pixel_size < 2 || pixel_size > 3 {
+    if !(2..=3).contains(&pixel_size) {
         return -1;
     }
 
@@ -604,7 +603,7 @@ pub fn decode_image(
     pixel_size: u32,
     stride: u32,
 ) -> i32 {
-    if pixel_size < 2 || pixel_size > 3 {
+    if !(2..=3).contains(&pixel_size) {
         return -1;
     }
 
@@ -785,7 +784,7 @@ pub unsafe extern "C" fn etc1_encode_image(
     stride: u32,
     p_out: *mut u8,
 ) -> i32 {
-    if pixel_size < 2 || pixel_size > 3 {
+    if !(2..=3).contains(&pixel_size) {
         return -1;
     }
     let in_size = (stride * height) as usize;
@@ -807,7 +806,7 @@ pub unsafe extern "C" fn etc1_decode_image(
     pixel_size: u32,
     stride: u32,
 ) -> i32 {
-    if pixel_size < 2 || pixel_size > 3 {
+    if !(2..=3).contains(&pixel_size) {
         return -1;
     }
     let in_size = get_encoded_data_size(width, height) as usize;
