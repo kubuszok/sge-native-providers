@@ -359,13 +359,13 @@ pub unsafe extern "C" fn sge_phys3d_body_apply_torque(world: *mut c_void, body: 
 #[no_mangle]
 pub unsafe extern "C" fn sge_phys3d_body_apply_force_at_point(world: *mut c_void, body: u64, fx: f32, fy: f32, fz: f32, px: f32, py: f32, pz: f32) {
     let w = &mut *(world as *mut PhysicsWorld);
-    if let Some(b) = w.rigid_body_set.get_mut(u64_to_body_handle(body)) { b.add_force_at_point(Vector::new(fx, fy, fz), Vector::new(px, py, pz).into(), true); }
+    if let Some(b) = w.rigid_body_set.get_mut(u64_to_body_handle(body)) { b.add_force_at_point(Vector::new(fx, fy, fz), Vector::new(px, py, pz), true); }
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn sge_phys3d_body_apply_impulse_at_point(world: *mut c_void, body: u64, ix: f32, iy: f32, iz: f32, px: f32, py: f32, pz: f32) {
     let w = &mut *(world as *mut PhysicsWorld);
-    if let Some(b) = w.rigid_body_set.get_mut(u64_to_body_handle(body)) { b.apply_impulse_at_point(Vector::new(ix, iy, iz), Vector::new(px, py, pz).into(), true); }
+    if let Some(b) = w.rigid_body_set.get_mut(u64_to_body_handle(body)) { b.apply_impulse_at_point(Vector::new(ix, iy, iz), Vector::new(px, py, pz), true); }
 }
 
 #[no_mangle]
@@ -507,7 +507,7 @@ pub unsafe extern "C" fn sge_phys3d_create_convex_hull_collider(world: *mut c_vo
     let points: Vec<Vector> = (0..vertex_count as usize)
         .map(|i| Vector::new(verts[i*3], verts[i*3+1], verts[i*3+2]))
         .collect();
-    let c = ColliderBuilder::convex_hull(&points.iter().map(|v| (*v).into()).collect::<Vec<_>>())
+    let c = ColliderBuilder::convex_hull(&points)
         .unwrap_or_else(|| ColliderBuilder::ball(0.1))
         .build();
     collider_handle_to_u64(w.collider_set.insert_with_parent(c, u64_to_body_handle(body), &mut w.rigid_body_set))
@@ -523,7 +523,7 @@ pub unsafe extern "C" fn sge_phys3d_create_trimesh_collider(
     let verts = slice::from_raw_parts(vertices, (vertex_count * 3) as usize);
     let idxs  = slice::from_raw_parts(indices, index_count as usize);
     let points: Vec<_> = (0..vertex_count as usize)
-        .map(|i| Vector::new(verts[i*3], verts[i*3+1], verts[i*3+2]).into())
+        .map(|i| Vector::new(verts[i*3], verts[i*3+1], verts[i*3+2]))
         .collect();
     let tris: Vec<[u32; 3]> = idxs.chunks_exact(3).map(|c| [c[0], c[1], c[2]]).collect();
     let c = ColliderBuilder::trimesh(points, tris).unwrap().build();
@@ -595,7 +595,7 @@ pub unsafe extern "C" fn sge_phys3d_ray_cast(
     world: *mut c_void, ox: f32, oy: f32, oz: f32, dx: f32, dy: f32, dz: f32, max_dist: f32, out: *mut f32,
 ) -> i32 {
     let w = &*(world as *mut PhysicsWorld);
-    let ray = Ray::new(Vector::new(ox, oy, oz).into(), Vector::new(dx, dy, dz));
+    let ray = Ray::new(Vector::new(ox, oy, oz), Vector::new(dx, dy, dz));
     let qp = w.broad_phase.as_query_pipeline(&DefaultQueryDispatcher, &w.rigid_body_set, &w.collider_set, QueryFilter::default());
     if let Some((handle, intersection)) = qp.cast_ray_and_get_normal(&ray, max_dist, true) {
         let hit = ray.point_at(intersection.time_of_impact);
@@ -856,11 +856,11 @@ pub unsafe extern "C" fn sge_phys3d_collider_get_position_wrt_parent(
             let q = rel.rotation;
             arr[3] = q.x; arr[4] = q.y; arr[5] = q.z; arr[6] = q.w;
         } else {
-            for i in 0..7 { arr[i] = 0.0; }
+            arr[..7].fill(0.0);
             arr[6] = 1.0; // identity quaternion w=1
         }
     } else {
-        for i in 0..7 { arr[i] = 0.0; }
+        arr[..7].fill(0.0);
         arr[6] = 1.0;
     }
 }
@@ -895,7 +895,7 @@ pub unsafe extern "C" fn sge_phys3d_collider_get_position(
         let q = pos.rotation;
         arr[3] = q.x; arr[4] = q.y; arr[5] = q.z; arr[6] = q.w;
     } else {
-        for i in 0..7 { arr[i] = 0.0; }
+        arr[..7].fill(0.0);
         arr[6] = 1.0;
     }
 }
@@ -931,7 +931,7 @@ pub unsafe extern "C" fn sge_phys3d_collider_get_aabb(
         arr[0] = aabb.mins.x; arr[1] = aabb.mins.y; arr[2] = aabb.mins.z;
         arr[3] = aabb.maxs.x; arr[4] = aabb.maxs.y; arr[5] = aabb.maxs.z;
     } else {
-        for i in 0..6 { arr[i] = 0.0; }
+        arr[..6].fill(0.0);
     }
 }
 
@@ -1744,7 +1744,7 @@ pub unsafe extern "C" fn sge_phys3d_ray_cast_all(
     out_hits: *mut f32, max_hits: i32,
 ) -> i32 {
     let w = &*(world as *mut PhysicsWorld);
-    let ray = Ray::new(Vector::new(ox, oy, oz).into(), Vector::new(dx, dy, dz));
+    let ray = Ray::new(Vector::new(ox, oy, oz), Vector::new(dx, dy, dz));
     let arr = slice::from_raw_parts_mut(out_hits, (max_hits * 9) as usize);
     let mut count = 0i32;
 
