@@ -12,6 +12,36 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  lint:
+    name: Clippy + format check
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            native-components/target
+          key: rust-lint-${{ hashFiles('native-components/Cargo.lock') }}
+          restore-keys: rust-lint-
+
+      - name: Clippy
+        working-directory: native-components
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Rustfmt
+        working-directory: native-components
+        run: cargo fmt --all -- --check
+
   build-and-package:
     name: Build native components + package JARs
     runs-on: macos-latest
