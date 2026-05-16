@@ -1,5 +1,6 @@
 import kubuszok.sbt._
 import kubuszok.sbt.KubuszokPlugin.autoImport._
+import sbtwelcome.UsefulTask
 import multiarch.core.Platform
 
 
@@ -68,7 +69,7 @@ val providerSettings = Seq(
 
 lazy val root = project
   .in(file("."))
-  .enablePlugins(GitVersioning, GitBranchPrompt)
+  .enablePlugins(KubuszokRootPlugin)
   .settings(publishSettings *)
   .settings(noPublishSettings *)
   .aggregate(
@@ -89,6 +90,12 @@ lazy val root = project
   )
   .settings(
     name := "sge-native-providers-root",
+    logo := s"sge-native-providers ${version.value}",
+    usefulTasks := Seq(
+      UsefulTask("compile", "Compile all provider JARs").noAlias,
+      UsefulTask("publishLocal", "Publish all providers locally").noAlias,
+      UsefulTask("ci-release", "Publish snapshot or release (based on git tags)").noAlias
+    )
   )
 
 // ── SGE core native ops (sge_native_ops + sge_audio + glfw3) ─────────
