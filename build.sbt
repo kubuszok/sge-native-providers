@@ -3,8 +3,7 @@ import kubuszok.sbt.KubuszokPlugin.autoImport._
 import sbtwelcome.UsefulTask
 import multiarch.core.Platform
 
-
-
+ThisBuild / packageDoc / publishArtifact := false
 
 val publishSettings = Seq(
   organization := "com.kubuszok",
