@@ -172,7 +172,7 @@ jobs:
           }
 
           # SN SGE core: must have .a for all non-Windows platforms + stubs
-          SN_CORE_JAR=$(ls providers/sn-provider-sge/target/*.jar)
+          SN_CORE_JAR=$(find target/out/jvm/u/sn-provider-sge -name '*.jar' ! -name '*-sources.jar' ! -name '*-javadoc.jar' 2>/dev/null | sort | tail -1)
           for plat in linux-x86_64 linux-aarch64 macos-x86_64 macos-aarch64; do
             verify_jar "$SN_CORE_JAR" \
               "native/$plat/libsge_native_ops.a" \
@@ -194,7 +194,7 @@ jobs:
           verify_jar "$SN_CORE_JAR" "sn-provider.json"
 
           # Panama SGE core (desktop): must have shared libs for all platforms
-          PNM_CORE_JAR=$(ls providers/pnm-provider-sge-desktop/target/*.jar)
+          PNM_CORE_JAR=$(find target/out/jvm/u/pnm-provider-sge-desktop -name '*.jar' ! -name '*-sources.jar' ! -name '*-javadoc.jar' 2>/dev/null | sort | tail -1)
           for plat in linux-x86_64 linux-aarch64; do
             verify_jar "$PNM_CORE_JAR" \
               "native/$plat/libsge_native_ops.so" \
@@ -210,7 +210,7 @@ jobs:
           verify_jar "$PNM_CORE_JAR" "pnm-provider.json"
 
           # SN FreeType: must have .a for all non-Windows platforms
-          SN_FT_JAR=$(ls providers/sn-provider-sge-freetype/target/*.jar)
+          SN_FT_JAR=$(find target/out/jvm/u/sn-provider-sge-freetype -name '*.jar' ! -name '*-sources.jar' ! -name '*-javadoc.jar' 2>/dev/null | sort | tail -1)
           for plat in linux-x86_64 linux-aarch64 macos-x86_64 macos-aarch64; do
             verify_jar "$SN_FT_JAR" \
               "native/$plat/libsge_freetype.a" \
@@ -219,7 +219,7 @@ jobs:
           verify_jar "$SN_FT_JAR" "sn-provider.json"
 
           # Panama FreeType (desktop): must have shared libs
-          PNM_FT_JAR=$(ls providers/pnm-provider-sge-freetype-desktop/target/*.jar)
+          PNM_FT_JAR=$(find target/out/jvm/u/pnm-provider-sge-freetype-desktop -name '*.jar' ! -name '*-sources.jar' ! -name '*-javadoc.jar' 2>/dev/null | sort | tail -1)
           for plat in linux-x86_64 linux-aarch64; do
             verify_jar "$PNM_FT_JAR" "native/$plat/libsge_freetype.so"
           done
@@ -229,14 +229,14 @@ jobs:
           verify_jar "$PNM_FT_JAR" "pnm-provider.json"
 
           # SN Physics: must have .a for all non-Windows platforms
-          SN_PH_JAR=$(ls providers/sn-provider-sge-physics/target/*.jar)
+          SN_PH_JAR=$(find target/out/jvm/u/sn-provider-sge-physics -name '*.jar' ! -name '*-sources.jar' ! -name '*-javadoc.jar' 2>/dev/null | sort | tail -1)
           for plat in linux-x86_64 linux-aarch64 macos-x86_64 macos-aarch64; do
             verify_jar "$SN_PH_JAR" "native/$plat/libsge_physics.a"
           done
           verify_jar "$SN_PH_JAR" "sn-provider.json"
 
           # Panama Physics (desktop): must have shared libs
-          PNM_PH_JAR=$(ls providers/pnm-provider-sge-physics-desktop/target/*.jar)
+          PNM_PH_JAR=$(find target/out/jvm/u/pnm-provider-sge-physics-desktop -name '*.jar' ! -name '*-sources.jar' ! -name '*-javadoc.jar' 2>/dev/null | sort | tail -1)
           for plat in linux-x86_64 linux-aarch64; do
             verify_jar "$PNM_PH_JAR" "native/$plat/libsge_physics.so"
           done
@@ -246,7 +246,7 @@ jobs:
           verify_jar "$PNM_PH_JAR" "pnm-provider.json"
 
           # SN ANGLE: must have EGL + GLESv2 for all platforms
-          SN_ANGLE_JAR=$(ls providers/sn-provider-sge-angle/target/*.jar)
+          SN_ANGLE_JAR=$(find target/out/jvm/u/sn-provider-sge-angle -name '*.jar' ! -name '*-sources.jar' ! -name '*-javadoc.jar' 2>/dev/null | sort | tail -1)
           verify_jar "$SN_ANGLE_JAR" "sn-provider.json"
           for plat in linux-x86_64 linux-aarch64; do
             verify_jar "$SN_ANGLE_JAR" "native/$plat/libEGL.so" "native/$plat/libGLESv2.so"
@@ -261,25 +261,25 @@ jobs:
           done
 
           # Panama ANGLE: same shared libs
-          PNM_ANGLE_JAR=$(ls providers/pnm-provider-sge-angle/target/*.jar)
+          PNM_ANGLE_JAR=$(find target/out/jvm/u/pnm-provider-sge-angle -name '*.jar' ! -name '*-sources.jar' ! -name '*-javadoc.jar' 2>/dev/null | sort | tail -1)
           verify_jar "$PNM_ANGLE_JAR" "pnm-provider.json"
 
           # Panama core (android): must have .so for all ABIs
-          PNM_CORE_ANDROID_JAR=$(ls providers/pnm-provider-sge-android/target/*.jar)
+          PNM_CORE_ANDROID_JAR=$(find target/out/jvm/u/pnm-provider-sge-android -name '*.jar' ! -name '*-sources.jar' ! -name '*-javadoc.jar' 2>/dev/null | sort | tail -1)
           for abi in android-aarch64 android-armv7 android-x86_64; do
             verify_jar "$PNM_CORE_ANDROID_JAR" "native/$abi/libsge_native_ops.so" "native/$abi/libsge_audio.so"
           done
           verify_jar "$PNM_CORE_ANDROID_JAR" "pnm-provider.json"
 
           # Panama FreeType (android): must have .so for all ABIs
-          PNM_FT_ANDROID_JAR=$(ls providers/pnm-provider-sge-freetype-android/target/*.jar)
+          PNM_FT_ANDROID_JAR=$(find target/out/jvm/u/pnm-provider-sge-freetype-android -name '*.jar' ! -name '*-sources.jar' ! -name '*-javadoc.jar' 2>/dev/null | sort | tail -1)
           for abi in android-aarch64 android-armv7 android-x86_64; do
             verify_jar "$PNM_FT_ANDROID_JAR" "native/$abi/libsge_freetype.so"
           done
           verify_jar "$PNM_FT_ANDROID_JAR" "pnm-provider.json"
 
           # Panama Physics (android): must have .so for all ABIs
-          PNM_PH_ANDROID_JAR=$(ls providers/pnm-provider-sge-physics-android/target/*.jar)
+          PNM_PH_ANDROID_JAR=$(find target/out/jvm/u/pnm-provider-sge-physics-android -name '*.jar' ! -name '*-sources.jar' ! -name '*-javadoc.jar' 2>/dev/null | sort | tail -1)
           for abi in android-aarch64 android-armv7 android-x86_64; do
             verify_jar "$PNM_PH_ANDROID_JAR" "native/$abi/libsge_physics.so"
           done
