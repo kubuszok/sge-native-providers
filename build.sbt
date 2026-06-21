@@ -1,6 +1,5 @@
 import kubuszok.sbt._
 import kubuszok.sbt.KubuszokPlugin.autoImport._
-import sbtwelcome.UsefulTask
 import multiarch.core.Platform
 
 val publishSettings = Seq(
@@ -42,18 +41,32 @@ val mimaSettings = Seq(
 val crossDir = settingKey[File]("Root directory containing cross-compiled native artifacts")
 ThisBuild / crossDir := (ThisBuild / baseDirectory).value / "native-components" / "target" / "cross"
 
-/** Create fat JAR mappings: native/<platform-classifier>/<file> for matching files. */
-def fatJarMappings(crossRoot: File, platforms: Seq[Platform], fileFilter: String => Boolean): Seq[(File, String)] =
+/** Create fat JAR mappings: native/<platform-classifier>/<file> for matching files.
+  * sbt 2.0 packageBin mappings are keyed by xsbti.HashedVirtualFileRef, so each File is
+  * converted through the build's FileConverter.
+  */
+def fatJarMappings(
+    conv: xsbti.FileConverter,
+    crossRoot: File,
+    platforms: Seq[Platform],
+    fileFilter: String => Boolean
+): Seq[(xsbti.HashedVirtualFileRef, String)] =
   platforms.flatMap { p =>
     val dir = crossRoot / p.classifier
     if (dir.exists())
-      sbt.IO.listFiles(dir).filter(f => f.isFile && fileFilter(f.getName)).map(f => f -> s"native/${p.classifier}/${f.getName}").toSeq
+      sbt.IO.listFiles(dir).filter(f => f.isFile && fileFilter(f.getName))
+        .map(f => (conv.toVirtualFile(f.toPath): xsbti.HashedVirtualFileRef) -> s"native/${p.classifier}/${f.getName}").toSeq
     else Seq.empty
   }
 
 /** Create fat JAR mappings for android: reads from cross-compilation output (same as desktop). */
-def androidJarMappings(crossRoot: File, platforms: Seq[Platform], fileFilter: String => Boolean): Seq[(File, String)] =
-  fatJarMappings(crossRoot, platforms, fileFilter)
+def androidJarMappings(
+    conv: xsbti.FileConverter,
+    crossRoot: File,
+    platforms: Seq[Platform],
+    fileFilter: String => Boolean
+): Seq[(xsbti.HashedVirtualFileRef, String)] =
+  fatJarMappings(conv, crossRoot, platforms, fileFilter)
 
 // Common provider settings
 val providerSettings = Seq(
@@ -90,13 +103,7 @@ lazy val root = project
     `sn-provider-sge-physics3d`
   )
   .settings(
-    name := "sge-native-providers-root",
-    logo := s"sge-native-providers ${version.value}",
-    usefulTasks := Seq(
-      UsefulTask("compile", "Compile all provider JARs").noAlias,
-      UsefulTask("publishLocal", "Publish all providers locally").noAlias,
-      UsefulTask("ci-release", "Publish snapshot or release (based on git tags)").noAlias
-    )
+    name := "sge-native-providers-root"
   )
   .settings(noPublishSettings)
   .settings(mimaSettings)
@@ -112,12 +119,13 @@ lazy val `pnm-provider-sge-angle` = project
     name := "pnm-provider-sge-angle",
     Compile / packageBin / mappings ++= {
       val cross = crossDir.value
+      val conv = fileConverter.value
       val libs = Set(
         "libEGL.dylib", "libEGL.so", "libEGL.dll",
         "libGLESv2.dylib", "libGLESv2.so", "libGLESv2.dll",
         "EGL.lib", "GLESv2.lib"
       )
-      fatJarMappings(cross, Platform.desktop, libs.contains)
+      fatJarMappings(conv, cross, Platform.desktop, libs.contains)
     }
   )
 
@@ -130,12 +138,13 @@ lazy val `sn-provider-sge-angle` = project
     name := "sn-provider-sge-angle",
     Compile / packageBin / mappings ++= {
       val cross = crossDir.value
+      val conv = fileConverter.value
       val libs = Set(
         "libEGL.dylib", "libEGL.so", "libEGL.dll",
         "libGLESv2.dylib", "libGLESv2.so", "libGLESv2.dll",
         "EGL.lib", "GLESv2.lib"
       )
-      fatJarMappings(cross, Platform.desktop, libs.contains)
+      fatJarMappings(conv, cross, Platform.desktop, libs.contains)
     }
   )
 
@@ -150,8 +159,9 @@ lazy val `pnm-provider-sge-android` = project
     name := "pnm-provider-sge-android",
     Compile / packageBin / mappings ++= {
       val cross = crossDir.value
+      val conv = fileConverter.value
       val libs = Set("libsge_native_ops.so", "libsge_audio.so")
-      androidJarMappings(cross, Platform.android, libs.contains)
+      androidJarMappings(conv, cross, Platform.android, libs.contains)
     }
   )
 
@@ -165,13 +175,14 @@ lazy val `pnm-provider-sge-desktop` = project
     name := "pnm-provider-sge-desktop",
     Compile / packageBin / mappings ++= {
       val cross = crossDir.value
+      val conv = fileConverter.value
       val libs = Set(
         "libsge_native_ops.dylib", "libsge_native_ops.so", "sge_native_ops.dll",
         "sge_native_ops.dll.lib",
         "libsge_audio.dylib", "libsge_audio.so", "sge_audio.dll",
         "libglfw.dylib", "libglfw.so", "glfw3.dll"
       )
-      fatJarMappings(cross, Platform.desktop, libs.contains)
+      fatJarMappings(conv, cross, Platform.desktop, libs.contains)
     }
   )
 
@@ -185,6 +196,7 @@ lazy val `sn-provider-sge` = project
     name := "sn-provider-sge",
     Compile / packageBin / mappings ++= {
       val cross = crossDir.value
+      val conv = fileConverter.value
       val libs = Set(
         "libsge_native_ops.a", "sge_native_ops.lib",
         "libsge_audio.a",
@@ -192,7 +204,7 @@ lazy val `sn-provider-sge` = project
         "sge_audio.lib", "glfw3.lib", "glfw.lib",
         "libobjc.a", "objc.lib"
       )
-      fatJarMappings(cross, Platform.desktop, libs.contains)
+      fatJarMappings(conv, cross, Platform.desktop, libs.contains)
     }
   )
 
@@ -207,8 +219,9 @@ lazy val `pnm-provider-sge-freetype-android` = project
     name := "pnm-provider-sge-freetype-android",
     Compile / packageBin / mappings ++= {
       val cross = crossDir.value
+      val conv = fileConverter.value
       val libs = Set("libsge_freetype.so")
-      androidJarMappings(cross, Platform.android, libs.contains)
+      androidJarMappings(conv, cross, Platform.android, libs.contains)
     }
   )
 
@@ -221,8 +234,9 @@ lazy val `pnm-provider-sge-freetype-desktop` = project
     name := "pnm-provider-sge-freetype-desktop",
     Compile / packageBin / mappings ++= {
       val cross = crossDir.value
+      val conv = fileConverter.value
       val libs = Set("libsge_freetype.dylib", "libsge_freetype.so", "sge_freetype.dll")
-      fatJarMappings(cross, Platform.desktop, libs.contains)
+      fatJarMappings(conv, cross, Platform.desktop, libs.contains)
     }
   )
 
@@ -235,8 +249,9 @@ lazy val `sn-provider-sge-freetype` = project
     name := "sn-provider-sge-freetype",
     Compile / packageBin / mappings ++= {
       val cross = crossDir.value
+      val conv = fileConverter.value
       val libs = Set("libsge_freetype.a", "sge_freetype.lib", "libfreetype.a")
-      fatJarMappings(cross, Platform.desktop, libs.contains)
+      fatJarMappings(conv, cross, Platform.desktop, libs.contains)
     }
   )
 
@@ -251,8 +266,9 @@ lazy val `pnm-provider-sge-physics-android` = project
     name := "pnm-provider-sge-physics-android",
     Compile / packageBin / mappings ++= {
       val cross = crossDir.value
+      val conv = fileConverter.value
       val libs = Set("libsge_physics.so")
-      androidJarMappings(cross, Platform.android, libs.contains)
+      androidJarMappings(conv, cross, Platform.android, libs.contains)
     }
   )
 
@@ -265,8 +281,9 @@ lazy val `pnm-provider-sge-physics-desktop` = project
     name := "pnm-provider-sge-physics-desktop",
     Compile / packageBin / mappings ++= {
       val cross = crossDir.value
+      val conv = fileConverter.value
       val libs = Set("libsge_physics.dylib", "libsge_physics.so", "sge_physics.dll")
-      fatJarMappings(cross, Platform.desktop, libs.contains)
+      fatJarMappings(conv, cross, Platform.desktop, libs.contains)
     }
   )
 
@@ -279,8 +296,9 @@ lazy val `sn-provider-sge-physics` = project
     name := "sn-provider-sge-physics",
     Compile / packageBin / mappings ++= {
       val cross = crossDir.value
+      val conv = fileConverter.value
       val libs = Set("libsge_physics.a", "sge_physics.lib")
-      fatJarMappings(cross, Platform.desktop, libs.contains)
+      fatJarMappings(conv, cross, Platform.desktop, libs.contains)
     }
   )
 
@@ -295,8 +313,9 @@ lazy val `pnm-provider-sge-physics3d-android` = project
     name := "pnm-provider-sge-physics3d-android",
     Compile / packageBin / mappings ++= {
       val cross = crossDir.value
+      val conv = fileConverter.value
       val libs = Set("libsge_physics3d.so")
-      androidJarMappings(cross, Platform.android, libs.contains)
+      androidJarMappings(conv, cross, Platform.android, libs.contains)
     }
   )
 
@@ -309,8 +328,9 @@ lazy val `pnm-provider-sge-physics3d-desktop` = project
     name := "pnm-provider-sge-physics3d-desktop",
     Compile / packageBin / mappings ++= {
       val cross = crossDir.value
+      val conv = fileConverter.value
       val libs = Set("libsge_physics3d.dylib", "libsge_physics3d.so", "sge_physics3d.dll")
-      fatJarMappings(cross, Platform.desktop, libs.contains)
+      fatJarMappings(conv, cross, Platform.desktop, libs.contains)
     }
   )
 
@@ -323,7 +343,8 @@ lazy val `sn-provider-sge-physics3d` = project
     name := "sn-provider-sge-physics3d",
     Compile / packageBin / mappings ++= {
       val cross = crossDir.value
+      val conv = fileConverter.value
       val libs = Set("libsge_physics3d.a", "sge_physics3d.lib")
-      fatJarMappings(cross, Platform.desktop, libs.contains)
+      fatJarMappings(conv, cross, Platform.desktop, libs.contains)
     }
   )
