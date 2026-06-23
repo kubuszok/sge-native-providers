@@ -600,15 +600,34 @@ fn link_system_libs(target_os: &str) {
 /// lld-link that parses them fine. Probe those explicit locations first, and only
 /// fall back to a `lld-link` on PATH — never silently to rust-lld.
 fn lld_link_command() -> std::process::Command {
+    // Explicit override (CI sets SGE_LLD_LINK to an absolute lld-link path found via
+    // `brew --prefix llvm`/`which`, so we never depend on guessing the prefix).
+    if let Ok(p) = std::env::var("SGE_LLD_LINK") {
+        if !p.is_empty() && std::path::Path::new(&p).exists() {
+            return std::process::Command::new(p);
+        }
+    }
     // Direct `lld-link` binaries from Homebrew LLVM (preferred — newest, handles
     // arm64 import libs). Covers both the `llvm` and `lld` formulae on Apple-silicon
-    // (/opt/homebrew) and Intel (/usr/local) Homebrew prefixes.
-    for lld_link in [
-        "/opt/homebrew/opt/llvm/bin/lld-link",
-        "/opt/homebrew/opt/lld/bin/lld-link",
-        "/usr/local/opt/llvm/bin/lld-link",
-        "/usr/local/opt/lld/bin/lld-link",
-    ] {
+    // (/opt/homebrew) and Intel (/usr/local) Homebrew prefixes, plus versioned kegs.
+    let mut candidates: Vec<String> = vec![
+        "/opt/homebrew/opt/llvm/bin/lld-link".to_string(),
+        "/opt/homebrew/opt/lld/bin/lld-link".to_string(),
+        "/usr/local/opt/llvm/bin/lld-link".to_string(),
+        "/usr/local/opt/lld/bin/lld-link".to_string(),
+    ];
+    // Versioned LLVM kegs (e.g. llvm@18) under both Homebrew Cellars.
+    for prefix in ["/opt/homebrew/Cellar/llvm", "/usr/local/Cellar/llvm"] {
+        if let Ok(entries) = std::fs::read_dir(prefix) {
+            for e in entries.flatten() {
+                let p = e.path().join("bin/lld-link");
+                if p.exists() {
+                    candidates.push(p.to_string_lossy().into_owned());
+                }
+            }
+        }
+    }
+    for lld_link in &candidates {
         if std::path::Path::new(lld_link).exists() {
             return std::process::Command::new(lld_link);
         }
