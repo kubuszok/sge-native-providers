@@ -239,8 +239,13 @@ fn build_audio_bridge_shared(vendor: &str, out_dir: &str, release_dir: &str, tar
                 } else {
                     format!("{}/Library/Caches/cargo-xwin/xwin", home)
                 };
+                // Use /machine:arm64 (a plain ARM64 DLL), NOT /machine:arm64x.
+                // arm64x produces a hybrid ARM64X image that also needs the
+                // ARM64EC-flavoured CRT (initterm/onexit "EC symbol"s); the xwin
+                // crt/ucrt/vcruntime import libs we pass are the pure-ARM64 set, so
+                // arm64x left those EC symbols undefined and the link failed.
                 let machine = if target.contains("aarch64") {
-                    "/machine:arm64x"
+                    "/machine:arm64"
                 } else {
                     "/machine:x64"
                 };
@@ -530,8 +535,10 @@ fn build_glfw_shared(
             .filter(|a| a.starts_with("-l"))
             .map(|a| format!("{}.lib", &a[2..]))
             .collect();
+        // Plain ARM64, not ARM64X — see the audio-bridge note above (arm64x needs
+        // the ARM64EC CRT and leaves EC symbols undefined with the pure-ARM64 libs).
         let machine = if target.contains("aarch64") {
-            "/machine:arm64x"
+            "/machine:arm64"
         } else {
             "/machine:x64"
         };
