@@ -55,7 +55,14 @@ jobs:
       - name: Install LLVM and add to PATH
         run: |
           brew install llvm
-          echo "/opt/homebrew/opt/llvm/bin" >> $GITHUB_PATH
+          LLVM_PREFIX="$(brew --prefix llvm)"
+          echo "$LLVM_PREFIX/bin" >> $GITHUB_PATH
+          # The Windows DLL cross-link needs a recent lld-link: rustup's bundled
+          # rust-lld crashes parsing the ARM64 Windows SDK import libs. Pin the
+          # Homebrew LLVM lld-link explicitly so build.rs can't fall back to it.
+          LLD_LINK="$LLVM_PREFIX/bin/lld-link"
+          ls -l "$LLD_LINK"
+          echo "SGE_LLD_LINK=$LLD_LINK" >> $GITHUB_ENV
 
       - name: Set up Android NDK
         run: |
