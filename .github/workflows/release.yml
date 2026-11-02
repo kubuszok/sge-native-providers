@@ -94,7 +94,7 @@ jobs:
         env:
           ANDROID_NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/27.2.12479018
 
-      - uses: coursier/cache-action@v8
+      - uses: coursier/cache-action@v9
       - name: Import GPG key for signing the release
         uses: crazy-max/ghaction-import-gpg@v7
         with:
