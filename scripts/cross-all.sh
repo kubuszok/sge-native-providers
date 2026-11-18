@@ -101,12 +101,12 @@ for entry in "${DESKTOP_TARGETS[@]}"; do
   # FreeType static archive — built by freetype-sys crate (dependency of sge-native-freetype).
   # On native macOS: uses system Homebrew freetype (copy from /opt/homebrew/opt/freetype/lib/).
   # On cross-compiled targets: freetype-sys builds from vendored source, producing libfreetype2.a
-  # in target/<triple>/release/build/freetype-sys-<hash>/out/.
+  # in target/<triple>/<profile>/build/freetype-sys-<hash>/out/ (Cargo 1.100+: freetype-sys/<hash>/out/).
   if [[ "$rust_target" == *"-apple-darwin" ]] && [ -f "/opt/homebrew/opt/freetype/lib/libfreetype.a" ]; then
     cp "/opt/homebrew/opt/freetype/lib/libfreetype.a" "$dest_dir/libfreetype.a"
   else
-    # Find libfreetype2.a in Cargo's build output (hash in path varies)
-    ft_archive=$(find "$NATIVE_DIR/target/$rust_target/$PROFILE_DIR/build" -path "*/freetype-sys-*/out/libfreetype2.a" 2>/dev/null | head -1)
+    # Find libfreetype2.a in Cargo's build output (hash in path varies; matches both layouts)
+    ft_archive=$(find "$NATIVE_DIR/target/$rust_target/$PROFILE_DIR/build" -path "*/freetype-sys*/out/libfreetype2.a" 2>/dev/null | head -1)
     if [ -n "$ft_archive" ]; then
       cp "$ft_archive" "$dest_dir/libfreetype.a"
     fi
