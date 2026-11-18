@@ -12,6 +12,18 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  check-formatting:
+    name: Check Scala formatting
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # .scalafmt.conf `project.git = true` needs git
+      - uses: coursier/setup-action@v3.1.0
+        with:
+          apps: scalafmt # uses the version from .scalafmt.conf; covers build.sbt too
+      - run: scalafmt --check
+
   lint:
     name: Clippy + format check
     runs-on: macos-latest
@@ -171,10 +183,16 @@ jobs:
 
       - uses: actions/setup-java@v6
         with:
-          java-version: "17"
+          java-version: "17.0.15"
           distribution: "zulu"
           cache: sbt
       - uses: sbt/setup-sbt@v1
+      - name: Make `sbt` run in the foreground (sbt 2 thin client starts a background server)
+        shell: bash
+        run: |
+          dir="$RUNNER_TEMP/sbt-foreground"; mkdir -p "$dir"
+          printf '#!/usr/bin/env bash\nexec "%s" --server "$@"\n' "$(command -v sbt)" > "$dir/sbt"
+          chmod +x "$dir/sbt"; echo "$dir" >> "$GITHUB_PATH"
 
       - name: Package and verify JARs
         run: |

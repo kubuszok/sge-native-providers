@@ -31,8 +31,7 @@ val noPublishSettings =
 
 val mimaSettings = Seq(
   mimaPreviousArtifacts := Set(),
-  mimaFailOnNoPrevious := false,
-  packageDoc / publishArtifact := false
+  mimaFailOnNoPrevious := false
 )
 
 // ── Shared helpers ────────────────────────────────────────────────────
@@ -74,8 +73,8 @@ def androidJarMappings(
 val providerSettings = Seq(
   autoScalaLibrary := false,
   crossPaths := false,
-  Compile / packageDoc / publishArtifact := false,
-  Compile / packageSrc / publishArtifact := false
+  // Maven Central requires sources and Javadoc JARs: publish them (empty, no Scala code), skip running Scaladoc
+  Compile / doc / sources := Seq.empty
 )
 
 // ── Root project ──────────────────────────────────────────────────────
