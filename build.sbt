@@ -41,9 +41,8 @@ val mimaSettings = Seq(
 val crossDir = settingKey[File]("Root directory containing cross-compiled native artifacts")
 ThisBuild / crossDir := (ThisBuild / baseDirectory).value / "native-components" / "target" / "cross"
 
-/** Create fat JAR mappings: native/<platform-classifier>/<file> for matching files.
-  * sbt 2.0 packageBin mappings are keyed by xsbti.HashedVirtualFileRef, so each File is
-  * converted through the build's FileConverter.
+/** Create fat JAR mappings: native/<platform-classifier>/<file> for matching files. sbt 2.0 packageBin mappings are
+  * keyed by xsbti.HashedVirtualFileRef, so each File is converted through the build's FileConverter.
   */
 def fatJarMappings(
     conv: xsbti.FileConverter,
@@ -54,8 +53,11 @@ def fatJarMappings(
   platforms.flatMap { p =>
     val dir = crossRoot / p.classifier
     if (dir.exists())
-      sbt.IO.listFiles(dir).filter(f => f.isFile && fileFilter(f.getName))
-        .map(f => (conv.toVirtualFile(f.toPath): xsbti.HashedVirtualFileRef) -> s"native/${p.classifier}/${f.getName}").toSeq
+      sbt.IO
+        .listFiles(dir)
+        .filter(f => f.isFile && fileFilter(f.getName))
+        .map(f => (conv.toVirtualFile(f.toPath): xsbti.HashedVirtualFileRef) -> s"native/${p.classifier}/${f.getName}")
+        .toSeq
     else Seq.empty
   }
 
@@ -71,7 +73,7 @@ def androidJarMappings(
 // Common provider settings
 val providerSettings = Seq(
   autoScalaLibrary := false,
-  crossPaths       := false,
+  crossPaths := false,
   Compile / packageDoc / publishArtifact := false,
   Compile / packageSrc / publishArtifact := false
 )
@@ -121,9 +123,14 @@ lazy val `pnm-provider-sge-angle` = project
       val cross = crossDir.value
       val conv = fileConverter.value
       val libs = Set(
-        "libEGL.dylib", "libEGL.so", "EGL.dll",
-        "libGLESv2.dylib", "libGLESv2.so", "GLESv2.dll",
-        "EGL.lib", "GLESv2.lib"
+        "libEGL.dylib",
+        "libEGL.so",
+        "EGL.dll",
+        "libGLESv2.dylib",
+        "libGLESv2.so",
+        "GLESv2.dll",
+        "EGL.lib",
+        "GLESv2.lib"
       )
       fatJarMappings(conv, cross, Platform.desktop, libs.contains)
     }
@@ -140,9 +147,14 @@ lazy val `sn-provider-sge-angle` = project
       val cross = crossDir.value
       val conv = fileConverter.value
       val libs = Set(
-        "libEGL.dylib", "libEGL.so", "libEGL.dll",
-        "libGLESv2.dylib", "libGLESv2.so", "libGLESv2.dll",
-        "EGL.lib", "GLESv2.lib"
+        "libEGL.dylib",
+        "libEGL.so",
+        "libEGL.dll",
+        "libGLESv2.dylib",
+        "libGLESv2.so",
+        "libGLESv2.dll",
+        "EGL.lib",
+        "GLESv2.lib"
       )
       fatJarMappings(conv, cross, Platform.desktop, libs.contains)
     }
@@ -177,10 +189,16 @@ lazy val `pnm-provider-sge-desktop` = project
       val cross = crossDir.value
       val conv = fileConverter.value
       val libs = Set(
-        "libsge_native_ops.dylib", "libsge_native_ops.so", "sge_native_ops.dll",
+        "libsge_native_ops.dylib",
+        "libsge_native_ops.so",
+        "sge_native_ops.dll",
         "sge_native_ops.dll.lib",
-        "libsge_audio.dylib", "libsge_audio.so", "sge_audio.dll",
-        "libglfw.dylib", "libglfw.so", "glfw3.dll"
+        "libsge_audio.dylib",
+        "libsge_audio.so",
+        "sge_audio.dll",
+        "libglfw.dylib",
+        "libglfw.so",
+        "glfw3.dll"
       )
       fatJarMappings(conv, cross, Platform.desktop, libs.contains)
     }
@@ -198,11 +216,15 @@ lazy val `sn-provider-sge` = project
       val cross = crossDir.value
       val conv = fileConverter.value
       val libs = Set(
-        "libsge_native_ops.a", "sge_native_ops.lib",
+        "libsge_native_ops.a",
+        "sge_native_ops.lib",
         "libsge_audio.a",
         "libglfw3.a",
-        "sge_audio.lib", "glfw3.lib", "glfw.lib",
-        "libobjc.a", "objc.lib",
+        "sge_audio.lib",
+        "glfw3.lib",
+        "glfw.lib",
+        "libobjc.a",
+        "objc.lib",
         // Windows runtime DLLs: on Windows these libs are linked via import
         // libraries (sge_native_ops.lib / sge_audio.lib / glfw3.lib reference
         // the matching DLL), so the DLLs must be present at run time. The
@@ -212,7 +234,9 @@ lazy val `sn-provider-sge` = project
         // (the ANGLE provider already ships EGL.dll/GLESv2.dll for the same
         // reason). These exist only in the windows-* classifier dirs, so they
         // are a no-op for the linux/macos mappings.
-        "sge_native_ops.dll", "sge_audio.dll", "glfw3.dll"
+        "sge_native_ops.dll",
+        "sge_audio.dll",
+        "glfw3.dll"
       )
       fatJarMappings(conv, cross, Platform.desktop, libs.contains)
     }
