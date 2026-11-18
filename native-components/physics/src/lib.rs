@@ -1202,7 +1202,7 @@ pub unsafe extern "C" fn sge_phys_create_trimesh_collider(
     let points: Vec<Vector> = (0..vertex_count as usize)
         .map(|i| Vector::new(verts[i * 2], verts[i * 2 + 1]))
         .collect();
-    let tris: Vec<[u32; 3]> = idxs.chunks_exact(3).map(|c| [c[0], c[1], c[2]]).collect();
+    let tris: Vec<[u32; 3]> = idxs.as_chunks::<3>().0.to_vec();
 
     let collider = ColliderBuilder::trimesh(points, tris).unwrap().build();
     let handle = w.collider_set.insert_with_parent(

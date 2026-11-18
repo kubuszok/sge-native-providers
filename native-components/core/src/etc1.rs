@@ -660,7 +660,7 @@ pub fn decode_image(
 
 // ── PKM Header ─────────────────────────────────────────────────────────────────
 
-static K_MAGIC: [u8; 6] = [b'P', b'K', b'M', b' ', b'1', b'0'];
+static K_MAGIC: [u8; 6] = *b"PKM 10";
 
 const ETC1_PKM_FORMAT_OFFSET: usize = 6;
 const ETC1_PKM_ENCODED_WIDTH_OFFSET: usize = 8;
