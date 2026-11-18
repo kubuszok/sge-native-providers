@@ -33,23 +33,19 @@ fn main() {
     // Derive from OUT_DIR to handle both `cargo build` and `cargo build --target <triple>`
     // correctly. When --target is explicit (even if it matches host), cargo uses
     // target/<triple>/<profile>/, but TARGET == HOST so we can't distinguish by comparing them.
-    // OUT_DIR is always correct: .../target[/<triple>]/<profile>/build/<pkg>/out
+    // OUT_DIR is .../target[/<triple>]/<profile>/build/<pkg>/out, or since Cargo 1.100
+    // .../<profile>/build/<pkg>/<hash>/out, so the profile directory is the parent of the
+    // nearest `build` ancestor, not a fixed number of levels up.
     // (TARGET/HOST are re-read locally inside the build_*_shared helpers that need them
     // to detect Windows/Linux cross-compilation.)
-    let release_dir = {
-        let out = std::path::Path::new(&out_dir);
-        // OUT_DIR = .../target[/<triple>]/<profile>/build/<pkg>/out
-        // Go up 3 levels: out -> <pkg> -> build -> <profile>
-        out.parent()
-            .unwrap()
-            .parent()
-            .unwrap()
-            .parent()
-            .unwrap()
-            .to_str()
-            .unwrap()
-            .to_string()
-    };
+    let release_dir = std::path::Path::new(&out_dir)
+        .ancestors()
+        .find(|p| p.file_name().is_some_and(|n| n == "build"))
+        .and_then(|build| build.parent())
+        .expect("OUT_DIR has no `build` ancestor")
+        .to_str()
+        .unwrap()
+        .to_string();
 
     let skip_c_libs = std::env::var("SGE_SKIP_C_LIBS").unwrap_or_default() == "1";
     let is_android = target_os == "android";
