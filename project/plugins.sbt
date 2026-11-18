@@ -1,5 +1,6 @@
 // kubuszok plugin (bundles: sbt-git, sbt-pgp, and more)
-addSbtPlugin("com.kubuszok" % "sbt-kubuszok" % "0.2.4")
+// TODO: switch to sbt-kubuszok 0.2.5 after its release (resolved from the Maven Central Snapshots resolver below)
+addSbtPlugin("com.kubuszok" % "sbt-kubuszok" % "0.2.4-4-g52226ed-SNAPSHOT")
 
 ThisBuild / libraryDependencySchemes += "org.scala-lang.modules" %% "scala-xml" % VersionScheme.Always
 
