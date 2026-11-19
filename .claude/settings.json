@@ -8,6 +8,7 @@
     }
   },
   "enabledPlugins": {
-    "sbt-kubuszok@kubuszok": true
+    "sbt-kubuszok@kubuszok": true,
+    "multiarch-scala@kubuszok": true
   }
 }
